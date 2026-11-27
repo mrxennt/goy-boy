@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GOY BOY — Click. Play. Have Fun.</title>
+    <script>
+      // GitHub Pages answers unknown paths with this file. Forward the requested
+      // path into the hash router so shared links such as /game/snake still open.
+      (function () {
+        var base = '/goy-boy/';
+        var path = window.location.pathname;
+        var rest = path.indexOf(base) === 0 ? path.slice(base.length) : '';
+        window.location.replace(base + '#/' + rest + window.location.search);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

@@ -330,6 +330,19 @@ function chooseAiMove(state: State): Move | null {
   return bestMoves[Math.floor(Math.random() * bestMoves.length)] ?? moves[0];
 }
 
+/* Bedenkzeit wie bei einem Menschen: Grundzeit plus mehr Zeit, wenn es viele
+   Zugmöglichkeiten, Schlagoptionen oder ein Schach zu bedenken gibt – plus
+   etwas Streuung, damit es nie mechanisch wirkt. */
+function thinkingDelayFor(state: State): number {
+  const moves = legalMoves(state, 'b');
+  const captures = moves.filter((move) => state.board[move.to.r][move.to.c] || move.enPassant).length;
+  const base = 700;
+  const complexity = Math.min(moves.length * 26, 420) + captures * 55 + (inCheck(state, 'b') ? 320 : 0);
+  const jitter = Math.random() * 500;
+  const hesitation = Math.random() < 0.15 ? 400 + Math.random() * 800 : 0;
+  return Math.min(Math.round(base + complexity + jitter + hesitation), 2800);
+}
+
 function outcomeOf(state: State): string | null {
   const moves = legalMoves(state, state.turn);
   if (moves.length) return null;
@@ -413,7 +426,7 @@ export default function Chess({ session, game }: GameProps) {
       setLastMove(move);
       const outcome = outcomeOf(next);
       if (outcome) finishWith(outcome);
-    }, 340);
+    }, thinkingDelayFor(state));
     return () => {
       window.clearTimeout(timer);
       setThinking(false);

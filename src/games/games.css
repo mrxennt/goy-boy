@@ -453,7 +453,10 @@
 
 .chess-board {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  /* explicit rows: without them the auto rows with pieces grew taller than
+     the empty ones, so the squares were not all the same size */
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
   width: min(100%, 460px);
   aspect-ratio: 1;
   border-radius: 12px;

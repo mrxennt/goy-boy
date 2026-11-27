@@ -14,15 +14,16 @@ const PUCK_R = 17;
 
 type Mode = '2p' | 'ai';
 
-type Puck = { x: number; y: number; vx: number; vy: number; held: boolean };
+type Puck = { x: number; y: number; vx: number; vy: number };
 type Paddle = { x: number; y: number; px: number; py: number; moving: boolean };
 
 const GOAL_TOP = (H - GOAL_W) / 2;
 const GOAL_BOTTOM = (H + GOAL_W) / 2;
 
 function clampPaddle(paddle: Paddle, side: 'left' | 'right') {
-  const minX = side === 'left' ? 26 : W / 2 - 30;
-  const maxX = side === 'left' ? W / 2 + 30 : W - 108;
+  // the paddle stays on its own half, fully inside the rink
+  const minX = side === 'left' ? PADDLE_W / 2 + 10 : W / 2 + 10;
+  const maxX = side === 'left' ? W / 2 - 10 : W - PADDLE_W / 2 - 10;
   paddle.x = Math.max(minX, Math.min(maxX, paddle.x));
   paddle.y = Math.max(92, Math.min(H - 92, paddle.y));
 }
@@ -33,12 +34,12 @@ export default function AirHockey({ session, game }: GameProps) {
   const [storedMode, setMode] = useDifficulty('air-hockey', '2p');
   const mode = storedMode === 'ai' ? 'ai' : '2p';
   const [score, setScore] = useState({ p1: 0, p2: 0 });
-  const [message, setMessage] = useState('Kreis auf eurer Seite plus Zielfeld: Die Scheibe klebt am Schläger, loslassen schießt.');
+  const [message, setMessage] = useState('Schläger ziehen und die Scheibe anspielen – ein schneller Schläger schießt härter.');
 
   const left = useRef<Paddle>({ x: 92, y: H / 2, px: 92, py: H / 2, moving: false });
   const right = useRef<Paddle>({ x: W - 92, y: H / 2, px: W - 92, py: H / 2, moving: false });
-  const puck = useRef<Puck>({ x: W / 2, y: H / 2, vx: 0, vy: 0, held: false });
-  const held = useRef<{ hand: 0 | 1; side: 'left' | 'right' } | null>(null);
+  const puck = useRef<Puck>({ x: W / 2, y: H / 2, vx: 0, vy: 0 });
+  const grab = useRef<{ hand: 0 | 1; side: 'left' | 'right'; dx: number; dy: number } | null>(null);
   const scores = useRef({ p1: 0, p2: 0 });
   const winner = useRef<string | null>(null);
   const elapsed = useRef(0);
@@ -53,9 +54,8 @@ export default function AirHockey({ session, game }: GameProps) {
       y: H / 2 + (Math.random() * 120 - 60),
       vx: 300 * direction,
       vy: (Math.random() * 200 - 100),
-      held: false,
     };
-    held.current = null;
+    grab.current = null;
     setMessage(label);
   }
 
@@ -115,17 +115,13 @@ export default function AirHockey({ session, game }: GameProps) {
     clampPaddle(l, 'left');
     clampPaddle(r, 'right');
 
-    if (held.current) {
-      const side = held.current.side;
-      const paddle = side === 'left' ? l : r;
-      b.x = paddle.x + (side === 'left' ? PUCK_R + 6 : -(PUCK_R + 6));
-      b.y = paddle.y;
-      b.vx = 0;
-      b.vy = 0;
-      b.held = true;
-      return;
-    }
-    b.held = false;
+    // distance each paddle really travelled since the last frame — the hit power
+    // comes from this, never from a stale saved position
+    const ldx = l.x - l.px;
+    const ldy = l.y - l.py;
+    const rdx = r.x - r.px;
+    const rdy = r.y - r.py;
+
     b.x += b.vx * dt;
     b.y += b.vy * dt;
 
@@ -166,8 +162,8 @@ export default function AirHockey({ session, game }: GameProps) {
     }
 
     // paddle collisions: mostly the front face, occasionally a side surprise
-    if (b.x < W / 2 + 40) collide(b, l, 'left');
-    if (b.x > W / 2 - 40) collide(b, r, 'right');
+    if (b.x < W / 2 + 40) collide(b, l, 'left', ldx, ldy);
+    if (b.x > W / 2 - 40) collide(b, r, 'right', rdx, rdy);
 
     // keep the puck lively
     if (Math.hypot(b.vx, b.vy) < 160) {
@@ -179,21 +175,29 @@ export default function AirHockey({ session, game }: GameProps) {
       b.vx = (b.vx / speed) * 1150;
       b.vy = (b.vy / speed) * 1150;
     }
+
+    l.px = l.x;
+    l.py = l.y;
+    r.px = r.x;
+    r.py = r.y;
   }
 
-  function collide(b: Puck, paddle: Paddle, side: 'left' | 'right') {
+  function collide(b: Puck, paddle: Paddle, side: 'left' | 'right', handDx: number, handDy: number) {
     const halfW = PADDLE_W / 2;
     const halfH = PUCK_R + 3;
     const dx = b.x - paddle.x;
     const dy = b.y - paddle.y;
     if (Math.abs(dx) > PUCK_R + halfW || Math.abs(dy) > PUCK_R + halfH) return;
-    const facing = side === 'left' ? dx > 0 : dx < 0;
-    const handSpeed = Math.hypot(paddle.x - paddle.px, paddle.y - paddle.py) / (1 / 60);
-    if (facing) {
-      const power = 470 + Math.min(520, handSpeed * 2.2);
-      const angle = Math.max(-0.75, Math.min(0.75, (dy / halfH) * 0.75));
-      b.vx = (side === 'left' ? 1 : -1) * Math.cos(angle) * power;
-      b.vy = (paddle.y - paddle.py) * 28 + Math.sin(angle) * power;
+    const dir = side === 'left' ? 1 : -1;
+    if (dx * dir > 0) {
+      // struck on the face: power and angle follow the hand movement of this frame
+      const handSpeed = Math.hypot(handDx, handDy) * 60;
+      const power = 470 + Math.min(430, handSpeed * 0.35);
+      const angle = Math.max(-0.72, Math.min(0.72, (dy / halfH) * 0.72));
+      b.vx = dir * Math.cos(angle) * power;
+      b.vy = Math.sin(angle) * power * 0.6 + handDy * 22;
+      // push the puck clear of the face so it can never stick inside the paddle
+      b.x = paddle.x + dir * (PUCK_R + halfW + 1);
     } else {
       // struck from the side: the puck is knocked back out instead of passing
       b.x = paddle.x + (dx > 0 ? PUCK_R + halfW : -(PUCK_R + halfW));
@@ -235,7 +239,7 @@ export default function AirHockey({ session, game }: GameProps) {
     drawPaddle(ctx, right.current, isAi ? '#fb7185' : '#f472b6');
 
     // puck
-    glowCircle(ctx, b.x, b.y, PUCK_R, b.held ? '#fde68a' : '#e2e8f0', b.held ? 26 : 12);
+    glowCircle(ctx, b.x, b.y, PUCK_R, '#e2e8f0', 12);
     ctx.fillStyle = 'rgba(15, 23, 42, 0.55)';
     ctx.beginPath();
     ctx.arc(b.x, b.y, PUCK_R * 0.55, 0, Math.PI * 2);
@@ -281,20 +285,6 @@ export default function AirHockey({ session, game }: GameProps) {
     return { x: ((clientX - rect.left) / rect.width) * W, y: ((clientY - rect.top) / rect.height) * H };
   };
 
-  function release(hand: 0 | 1) {
-    const current = held.current;
-    if (!current || current.hand !== hand) return;
-    const paddle = current.side === 'left' ? left.current : right.current;
-    const b = puck.current;
-    const speed = Math.hypot(paddle.x - paddle.px, paddle.y - paddle.py) * 26;
-    const side = current.side === 'left' ? 1 : -1;
-    b.vx = side * Math.max(360, Math.min(980, 420 + speed));
-    b.vy = (paddle.y - paddle.py) * 30 + (Math.random() * 80 - 40);
-    b.held = false;
-    held.current = null;
-    sfx.pick();
-  }
-
   return (
     <GameStage
       game={game}
@@ -334,38 +324,41 @@ export default function AirHockey({ session, game }: GameProps) {
           className="game-canvas hockey-canvas"
           style={{ maxWidth: W }}
           onPointerDown={(event) => {
-            if (session.status !== 'playing' || winner.current || held.current) return;
+            if (session.status !== 'playing' || winner.current || grab.current) return;
             const point = toLogical(event.clientX, event.clientY);
             const side: 'left' | 'right' = point.x < W / 2 ? 'left' : 'right';
             if (side === 'right' && isAi) return;
             const paddle = side === 'left' ? left.current : right.current;
-            const nearPaddle = Math.hypot(point.x - paddle.x, point.y - paddle.y) < 70;
-            const b = puck.current;
-            const nearPuck = Math.hypot(point.x - b.x, point.y - b.y) < 60;
-            const hand: 0 | 1 = side === 'left' ? 0 : 1;
-            if (nearPaddle || nearPuck) {
-              paddle.x = point.x;
-              paddle.y = point.y;
-              clampPaddle(paddle, side);
-              held.current = { hand, side };
-              (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
-            }
+            // grab where the player touched: no jump of the paddle, and never of the puck
+            const near = Math.hypot(point.x - paddle.x, point.y - paddle.y) < 110;
+            grab.current = {
+              hand: side === 'left' ? 0 : 1,
+              side,
+              dx: near ? paddle.x - point.x : 0,
+              dy: near ? paddle.y - point.y : 0,
+            };
+            paddle.x = point.x + grab.current.dx;
+            paddle.y = point.y + grab.current.dy;
+            clampPaddle(paddle, side);
+            // a click that places the paddle somewhere new must not count as a swing
+            paddle.px = paddle.x;
+            paddle.py = paddle.y;
+            (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
           }}
           onPointerMove={(event) => {
-            if (!held.current) return;
+            const current = grab.current;
+            if (!current) return;
             const point = toLogical(event.clientX, event.clientY);
-            const paddle = held.current.side === 'left' ? left.current : right.current;
-            paddle.x = point.x;
-            paddle.y = point.y;
-            clampPaddle(paddle, held.current.side);
+            const paddle = current.side === 'left' ? left.current : right.current;
+            paddle.x = point.x + current.dx;
+            paddle.y = point.y + current.dy;
+            clampPaddle(paddle, current.side);
           }}
           onPointerUp={() => {
-            if (!held.current) return;
-            release(held.current.hand);
+            grab.current = null;
           }}
           onPointerCancel={() => {
-            if (!held.current) return;
-            release(held.current.hand);
+            grab.current = null;
           }}
         />
         <p className="game-hint">{message}</p>

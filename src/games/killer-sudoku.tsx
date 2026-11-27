@@ -78,7 +78,14 @@ export default function KillerSudoku({ session, game }: GameProps) {
     saveRun<Saved>('killer-sudoku', { puzzle, givens, values, cages, seconds });
   }, [puzzle, givens, values, cages, seconds]);
 
+  // restart / level change / new daily — but never on the first render, that would
+  // throw away a resumed game right after loading it
+  const firstPass = useRef(true);
   useEffect(() => {
+    if (firstPass.current) {
+      firstPass.current = false;
+      return;
+    }
     const init = initialValues(LEVELS[levelId].gaps);
     setValues(init.next);
     setGivens(init.givens);
@@ -206,8 +213,8 @@ export default function KillerSudoku({ session, game }: GameProps) {
                   conflicts[index] ? 'is-conflict' : '',
                   col % 3 === 2 && col < 8 ? 'edge-right' : '',
                   row % 3 === 2 && row < 8 ? 'edge-bottom' : '',
-                  cage.cells.includes(index - 9) ? 'no-top' : '',
-                  cage.cells.includes(index - 1) ? 'no-left' : '',
+                  row > 0 && cage.cells.includes(index - 9) ? 'no-top' : '',
+                  col > 0 && cage.cells.includes(index - 1) ? 'no-left' : '',
                 ].join(' ')}
                 onClick={() => {
                   setSel(index);

@@ -88,9 +88,10 @@ export default function Darts({ session, game }: GameProps) {
     return { darts, total: bust ? 0 : before - after, bust, after };
   }
 
-  function throwAt(angle: number, radius: number) {
+  function throwAt(angle: number, radius: number, byAi = false) {
     if (over.current || session.status !== 'playing') return;
-    if (isAi && turn.current === 1) return;
+    // clicks are ignored while the AI has the darts; the AI itself passes byAi
+    if (!byAi && isAi && turn.current === 1) return;
     const hit = scoring(angle, radius);
     const player = turn.current;
     const board = [...remaining.current];
@@ -186,7 +187,7 @@ export default function Darts({ session, game }: GameProps) {
       angle = aimSegment(segment, 0.12);
       radius = left <= 40 ? (R_TRIPLE_OUT + R_DOUBLE_IN) / 2 : (R_TRIPLE_IN + R_TRIPLE_OUT) / 2 - (left <= 40 ? 0 : 30);
     }
-    throwAt(angle, radius);
+    throwAt(angle, radius, true);
   }
 
   useRafLoop((dt) => {
@@ -196,7 +197,7 @@ export default function Darts({ session, game }: GameProps) {
     }
     aiTimer.current += dt;
     if (aiTimer.current > 900 + Math.random() * 500) {
-      aiTimer.current = -100000; // wait for the state update to land
+      aiTimer.current = 0; // start the wait over: the next dart follows after the normal pause
       aiThrow();
     }
   }, session.status === 'playing' && isAi);

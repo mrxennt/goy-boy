@@ -4,6 +4,7 @@ import { useDifficulty } from '../lib/hooks';
 import { sfx } from '../lib/sound';
 import type { GameProps } from './types';
 import {
+  ADJ,
   BLACK,
   FIGURE,
   WHITE,
@@ -27,19 +28,15 @@ const LEVELS = {
 } as const;
 type LevelId = keyof typeof LEVELS;
 
-/** Straight lines between neighbouring points of the fixed figure. */
+/**
+ * The drawn lines are exactly the board's own neighbour pairs — the same graph the
+ * rules use, so a line on screen always is a legal move and the figure stays fixed.
+ */
 const EDGES: [number, number][] = (() => {
   const links: [number, number][] = [];
-  const near = FIGURE.map((a, i) =>
-    FIGURE.map((b, j) => ({ j, dist: Math.hypot(a.x - b.x, a.y - b.y) }))
-      .filter((entry) => entry.j !== i && entry.dist > 0.001)
-      .sort((x, y) => x.dist - y.dist),
-  );
-  FIGURE.forEach((_, i) => {
-    const own = near[i][0].dist;
-    near[i].forEach((entry) => {
-      if (Math.abs(entry.dist - own) > 0.001) return;
-      if (entry.j > i) links.push([i, entry.j]);
+  ADJ.forEach((neighbours, from) => {
+    neighbours.forEach((to) => {
+      if (to > from) links.push([from, to]);
     });
   });
   return links;

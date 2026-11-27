@@ -19,6 +19,9 @@ const TOP = 34;
 const LEFT = (W - COLS * STEP_X) / 2 + STEP_X / 2;
 const SHOOTER = { x: W / 2, y: H - 40 };
 const SPEED = 560;
+/* screen y grows downwards, so "up" means a negative angle: -PI/2 is straight up */
+const MIN_AIM = -Math.PI + 0.18;
+const MAX_AIM = -0.18;
 
 const COLORS = ['#f472b6', '#38bdf8', '#facc15', '#4ade80', '#a78bfa', '#fb923c'];
 
@@ -47,8 +50,8 @@ function emptyBoard(): Bubble[][] {
   return Array.from({ length: ROWS }, (_, row) => Array.from({ length: rowCols(row) }, () => null));
 }
 
-function randomRow(rng: Rng, palette: number[]): Bubble[] {
-  return Array.from({ length: COLS }, () => ({ color: palette[Math.floor(rng() * palette.length)], x: 0, y: 0 }));
+function randomRow(rng: Rng, palette: number[], length: number): Bubble[] {
+  return Array.from({ length }, () => ({ color: palette[Math.floor(rng() * palette.length)], x: 0, y: 0 }));
 }
 
 export default function Bubble({ session, game }: GameProps) {
@@ -58,7 +61,7 @@ export default function Bubble({ session, game }: GameProps) {
   const shot = useRef<{ x: number; y: number; vx: number; vy: number; color: number } | null>(null);
   const next = useRef(0);
   const current = useRef(0);
-  const aim = useRef(Math.PI / 2);
+  const aim = useRef(-Math.PI / 2);
   const over = useRef(false);
   const shots = useRef(0);
   const [ui, setUi] = useState({ next: 0, current: 0, message: 'Zielen mit der Maus oder den Pfeiltasten, schießen mit Klick/Enter.' });
@@ -73,7 +76,7 @@ export default function Bubble({ session, game }: GameProps) {
     const rng = session.daily ? makeRng(session.daily.seed) : Math.random;
     const grid = emptyBoard();
     for (let row = 0; row < 4; row += 1) {
-      const line = randomRow(rng, palette.current);
+      const line = randomRow(rng, palette.current, rowCols(row));
       line.forEach((bubble, col) => (grid[row][col] = bubble));
     }
     board.current = grid;
@@ -224,6 +227,12 @@ export default function Bubble({ session, game }: GameProps) {
         land(ball);
         return;
       }
+      if (ball.y > H + 80) {
+        // never leave a shot stuck below the board
+        shot.current = null;
+        spawn();
+        return;
+      }
       const hit = board.current.some((line, row) =>
         line.some((bubble, col) => bubble && Math.hypot(cellX(row, col) - ball.x, cellY(row) - ball.y) < R * 1.8),
       );
@@ -332,17 +341,17 @@ export default function Bubble({ session, game }: GameProps) {
     const x = ((clientX - rect.left) / rect.width) * W;
     const y = ((clientY - rect.top) / rect.height) * H;
     const angle = Math.atan2(y - SHOOTER.y, x - SHOOTER.x);
-    aim.current = Math.max(Math.PI * 0.12, Math.min(Math.PI * 0.88, angle));
+    aim.current = Math.max(MIN_AIM, Math.min(MAX_AIM, angle));
   }
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (statusRef.current !== 'playing') return;
       if (event.key === 'ArrowLeft') {
-        aim.current = Math.max(Math.PI * 0.12, aim.current - 0.09);
+        aim.current = Math.max(MIN_AIM, aim.current - 0.09);
         event.preventDefault();
       } else if (event.key === 'ArrowRight') {
-        aim.current = Math.min(Math.PI * 0.88, aim.current + 0.09);
+        aim.current = Math.min(MAX_AIM, aim.current + 0.09);
         event.preventDefault();
       } else if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault();

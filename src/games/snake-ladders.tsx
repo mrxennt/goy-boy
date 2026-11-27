@@ -12,11 +12,15 @@ const LADDERS: Record<number, number> = { 1: 38, 4: 14, 9: 31, 21: 42, 28: 84, 3
 const PLAYER_COLORS = ['#f472b6', '#38bdf8', '#facc15', '#4ade80'];
 const PLAYER_NAMES = ['Rot', 'Blau', 'Gelb', 'Grün'];
 
-function cellPosition(number: number) {
-  const index = number - 1;
-  const row = Math.floor(index / 10);
-  const col = row % 2 === 0 ? index % 10 : 9 - (index % 10);
-  return { row, col };
+/**
+ * Classic layout: 1 in the bottom-right corner, the rows snake upwards and
+ * 100 sits top-right. Cells are placed by explicit grid row/column, so the
+ * board never reflows.
+ */
+function boardPlace(number: number) {
+  const rank = Math.floor((number - 1) / 10);
+  const within = (number - 1) % 10;
+  return { row: 9 - rank, col: rank % 2 === 0 ? 9 - within : within };
 }
 
 export default function SnakeLadders({ session, game }: GameProps) {
@@ -127,9 +131,8 @@ export default function SnakeLadders({ session, game }: GameProps) {
           ))}
         </div>
         <div className="ladders-board">
-          {Array.from({ length: 100 }, (_, index) => {
-            const number = 100 - index;
-            const { row, col } = cellPosition(number);
+          {Array.from({ length: 100 }, (_, index) => index + 1).map((number) => {
+            const { row, col } = boardPlace(number);
             const isSnake = number in SNAKES;
             const isLadder = number in LADDERS;
             const here = Array.from({ length: playerCount }, (_, player) => player).filter(
@@ -138,6 +141,7 @@ export default function SnakeLadders({ session, game }: GameProps) {
             return (
               <div
                 key={number}
+                style={{ gridRow: row + 1, gridColumn: col + 1 }}
                 className={`ladders-cell ${(row + col) % 2 === 0 ? 'is-a' : 'is-b'} ${isSnake ? 'is-snake' : ''} ${isLadder ? 'is-ladder' : ''}`}
               >
                 <span className="ladders-number">{number}</span>

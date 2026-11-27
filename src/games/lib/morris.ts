@@ -63,14 +63,15 @@ export const LINES: number[][] = [
  * The coordinates never depend on game state, so the figure can never reshape.
  */
 export const FIGURE: { x: number; y: number }[] = [
-  // outer ring, clockwise from the top-left corner
-  { x: 0, y: 0 }, { x: 0.5, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 0.5 }, { x: 1, y: 1 }, { x: 0.5, y: 1 }, { x: 0, y: 1 }, { x: 0, y: 0.5 },
-  // middle ring corners, then its edge middles
-  { x: 1 / 3, y: 1 / 3 }, { x: 2 / 3, y: 1 / 3 }, { x: 2 / 3, y: 2 / 3 }, { x: 1 / 3, y: 2 / 3 },
-  { x: 0.5, y: 1 / 3 }, { x: 2 / 3, y: 0.5 }, { x: 0.5, y: 2 / 3 }, { x: 1 / 3, y: 0.5 },
-  // inner ring corners, then its edge middles
-  { x: 5 / 12, y: 5 / 12 }, { x: 7 / 12, y: 5 / 12 }, { x: 7 / 12, y: 7 / 12 }, { x: 5 / 12, y: 7 / 12 },
-  { x: 0.5, y: 5 / 12 }, { x: 7 / 12, y: 0.5 }, { x: 0.5, y: 7 / 12 }, { x: 5 / 12, y: 0.5 },
+  // three concentric squares inset by 0, 1/6 and 1/3 — the classic board, exactly
+  // matching ADJ: index order is top-left → top-middle → top-right, then the rows below
+  { x: 0, y: 0 }, { x: 0.5, y: 0 }, { x: 1, y: 0 },
+  { x: 1 / 6, y: 1 / 6 }, { x: 0.5, y: 1 / 6 }, { x: 5 / 6, y: 1 / 6 },
+  { x: 1 / 3, y: 1 / 3 }, { x: 0.5, y: 1 / 3 }, { x: 2 / 3, y: 1 / 3 },
+  { x: 0, y: 0.5 }, { x: 1 / 6, y: 0.5 }, { x: 1 / 3, y: 0.5 }, { x: 2 / 3, y: 0.5 }, { x: 5 / 6, y: 0.5 }, { x: 1, y: 0.5 },
+  { x: 1 / 3, y: 2 / 3 }, { x: 0.5, y: 2 / 3 }, { x: 2 / 3, y: 2 / 3 },
+  { x: 1 / 6, y: 5 / 6 }, { x: 0.5, y: 5 / 6 }, { x: 5 / 6, y: 5 / 6 },
+  { x: 0, y: 1 }, { x: 0.5, y: 1 }, { x: 1, y: 1 },
 ];
 
 export function emptyBoard(): Board {

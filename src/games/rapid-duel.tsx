@@ -100,6 +100,8 @@ export default function RapidDuel({ session, game }: GameProps) {
   const scoresRef = useRef(scores);
   scoresRef.current = scores;
   const over = useRef(false);
+  /* one answer per round: a double tap must not count twice */
+  const locked = useRef(false);
   const finishRef = useRef(session.finish);
   finishRef.current = session.finish;
 
@@ -110,6 +112,7 @@ export default function RapidDuel({ session, game }: GameProps) {
 
   useEffect(() => {
     over.current = false;
+    locked.current = false;
     setScores({ p1: 0, p2: 0 });
     scoresRef.current = { p1: 0, p2: 0 };
     setRoundIndex(0);
@@ -148,7 +151,8 @@ export default function RapidDuel({ session, game }: GameProps) {
   }, [session.status]);
 
   function answer(option: string) {
-    if (over.current || session.status !== 'playing') return;
+    if (over.current || locked.current || session.status !== 'playing') return;
+    locked.current = true;
     const correct = option === round.answer;
     if (correct) {
       sfx.point();
@@ -168,6 +172,7 @@ export default function RapidDuel({ session, game }: GameProps) {
         setFlash(null);
         setMessage(`Spieler ${turn === 1 ? 2 : 1} ist dran.`);
         setTurn(turn === 1 ? 2 : 1);
+        locked.current = false;
       }, 500);
     } else {
       sfx.error();
@@ -176,6 +181,7 @@ export default function RapidDuel({ session, game }: GameProps) {
       window.setTimeout(() => {
         setFlash(null);
         setTurn(turn === 1 ? 2 : 1);
+        locked.current = false;
       }, 520);
     }
   }

@@ -105,6 +105,30 @@ check('mühle: 24 distinct points inside the board', () => {
   });
 });
 
+check('mühle: every mill line is straight through its middle point', () => {
+  morris.LINES.forEach((line) => {
+    const [a, b, c] = line.map((index) => morris.FIGURE[index]);
+    const midX = (a.x + c.x) / 2;
+    const midY = (a.y + c.y) / 2;
+    assert(Math.abs(midX - b.x) < 1e-9 && Math.abs(midY - b.y) < 1e-9, `line ${line.join('-')} is not straight`);
+  });
+});
+
+check('mühle: board neighbours really sit next to each other', () => {
+  const drawn = new Set();
+  morris.ADJ.forEach((neighbours, from) =>
+    neighbours.forEach((to) => drawn.add(from < to ? `${from}-${to}` : `${to}-${from}`)),
+  );
+  assert(drawn.size === 32, `expected 32 edges, got ${drawn.size}`);
+  drawn.forEach((key) => {
+    const [from, to] = key.split('-').map(Number);
+    const a = morris.FIGURE[from];
+    const b = morris.FIGURE[to];
+    const straight = Math.abs(a.x - b.x) < 1e-9 || Math.abs(a.y - b.y) < 1e-9;
+    assert(straight, `edge ${key} is drawn diagonally (${a.x},${a.y}) -> (${b.x},${b.y})`);
+  });
+});
+
 check('mühle: closing a mill opens a removal and keeps the turn', () => {
   let state = morris.startState();
   [0, 9, 1, 10, 2].forEach((point) => {

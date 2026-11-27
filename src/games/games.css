@@ -500,17 +500,28 @@
   position: relative;
   z-index: 2;
   pointer-events: none;
+  display: grid;
+  place-items: center;
+  /* one fixed em box for every figure, so no piece is bigger than another */
+  width: 1em;
+  height: 1em;
+  font-size: 1em;
+  line-height: 1;
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'Apple Symbols', 'DejaVu Sans', sans-serif;
+  font-variant-emoji: text;
   transition: transform 0.12s ease;
 }
 
 .chess-piece.is-white {
-  color: #fff;
-  text-shadow: 0 1px 0 #4c1d95, 0 2px 5px rgba(0, 0, 0, 0.5);
+  color: #fdfcff;
+  -webkit-text-stroke: 1px #241a45;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
 }
 
 .chess-piece.is-black {
-  color: #17142a;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #15121f;
+  -webkit-text-stroke: 1px rgba(240, 236, 255, 0.7);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
 }
 
 .chess-square:hover .chess-piece {
@@ -581,7 +592,10 @@
   background: rgba(255, 255, 255, 0.08);
   font-size: 24px;
   line-height: 1;
-  color: #fff;
+  color: #fdfcff;
+  -webkit-text-stroke: 1px #241a45;
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', 'Apple Symbols', 'DejaVu Sans', sans-serif;
+  font-variant-emoji: text;
 }
 
 .promotion-btn:hover {
@@ -591,6 +605,9 @@
 /* ---------- Tic Tac Toe ---------- */
 
 .ttt-board {
+  /* explicit 3x3 layout: horizontal rows win just like vertical columns */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
   gap: 9px;
   width: min(100%, 350px);
   aspect-ratio: 1;

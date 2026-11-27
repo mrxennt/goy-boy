@@ -16,7 +16,20 @@ type State = {
   enPassant: Square | null;
 };
 
-const GLYPH: Record<PieceType, string> = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+/**
+ * Solid glyphs for both colours: identical shapes keep every piece the same
+ * size, while the colour classes decide white vs black. The U+FE0E variation
+ * selector forces text presentation, so the glyphs never turn into the black
+ * emoji chess pieces.
+ */
+const GLYPH: Record<PieceType, string> = {
+  k: '♚\uFE0E',
+  q: '♛\uFE0E',
+  r: '♜\uFE0E',
+  b: '♝\uFE0E',
+  n: '♞\uFE0E',
+  p: '♟\uFE0E',
+};
 const VALUE: Record<PieceType, number> = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
 const KNIGHT_STEPS = [
   [1, 2], [2, 1], [-1, 2], [-2, 1], [1, -2], [2, -1], [-1, -2], [-2, -1],

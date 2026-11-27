@@ -519,9 +519,8 @@
 }
 
 .chess-piece.is-black {
-  color: #15121f;
-  -webkit-text-stroke: 1px rgba(240, 236, 255, 0.7);
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  color: #14112a;
+  text-shadow: 0 1px 2px rgba(10, 6, 26, 0.6);
 }
 
 .chess-square:hover .chess-piece {

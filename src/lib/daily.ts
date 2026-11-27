@@ -2,7 +2,18 @@ import { GAMES, type GameMeta } from '../data/games';
 import { hashString } from './rng';
 
 /** Games whose content can be generated from a seed, so a daily round is fair. */
-export const DAILY_POOL = ['2048', 'minesweeper', 'sudoku', 'snake', 'wortle', 'memory'] as const;
+export const DAILY_POOL = [
+  '2048',
+  'minesweeper',
+  'sudoku',
+  'snake',
+  'wortle',
+  'memory',
+  'nonogram',
+  'killer-sudoku',
+  'solitaire',
+  'bubble',
+] as const;
 
 /** Local calendar day as `YYYY-MM-DD` — the identity of a daily challenge. */
 export function dateKey(date = new Date()): string {

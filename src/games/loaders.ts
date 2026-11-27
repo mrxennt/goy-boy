@@ -28,6 +28,19 @@ export const gameLoaders: Record<string, () => Promise<{ default: ComponentType<
   'reaction-duel': () => import('./reaction-duel'),
   'battle-arena': () => import('./battle-arena'),
   'snake-duel': () => import('./snake-duel'),
+  'air-hockey': () => import('./air-hockey'),
+  darts: () => import('./darts'),
+  nonogram: () => import('./nonogram'),
+  solitaire: () => import('./solitaire'),
+  stacker: () => import('./stacker'),
+  checkers: () => import('./checkers'),
+  simon: () => import('./simon'),
+  morris: () => import('./morris'),
+  'snake-ladders': () => import('./snake-ladders'),
+  'rapid-duel': () => import('./rapid-duel'),
+  'killer-sudoku': () => import('./killer-sudoku'),
+  bubble: () => import('./bubble'),
+  'split-race': () => import('./split-race'),
 };
 
 export function hasGameModule(id: string): boolean {

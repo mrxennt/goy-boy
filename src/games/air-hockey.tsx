@@ -14,6 +14,18 @@ const PUCK_R = 17;
 
 type Mode = '2p' | 'ai';
 
+type AiLevel = 'easy' | 'normal' | 'hard';
+
+/**
+ * The AI paddle re-reads the puck only when its reaction time is up and aims with a
+ * human-sized error, so a fast, well-placed shot beats every level.
+ */
+const AI_LEVELS: Record<AiLevel, { label: string; speed: number; reaction: number; error: number }> = {
+  easy: { label: 'Leicht', speed: 1.8, reaction: 480, error: 80 },
+  normal: { label: 'Mittel', speed: 3.4, reaction: 300, error: 44 },
+  hard: { label: 'Stark', speed: 5.6, reaction: 190, error: 24 },
+};
+
 type Puck = { x: number; y: number; vx: number; vy: number };
 type Paddle = { x: number; y: number; px: number; py: number; moving: boolean };
 
@@ -31,8 +43,11 @@ function clampPaddle(paddle: Paddle, side: 'left' | 'right') {
 export default function AirHockey({ session, game }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useCanvasSize(canvasRef, W, H);
-  const [storedMode, setMode] = useDifficulty('air-hockey', '2p');
-  const mode = storedMode === 'ai' ? 'ai' : '2p';
+  // one stored value per game (only real game ids persist): "2p" or "ai-easy"/"ai-normal"/"ai-hard"
+  const [storedMode, setStoredMode] = useDifficulty('air-hockey', '2p');
+  const mode: Mode = storedMode === '2p' ? '2p' : 'ai';
+  const aiLevel: AiLevel = storedMode.endsWith('-easy') ? 'easy' : storedMode.endsWith('-hard') ? 'hard' : 'normal';
+  const setMode = (next: Mode) => setStoredMode(next === '2p' ? '2p' : `ai-${aiLevel}`);
   const [score, setScore] = useState({ p1: 0, p2: 0 });
   const [message, setMessage] = useState('Schläger ziehen und die Scheibe anspielen – ein schneller Schläger schießt härter.');
 
@@ -43,6 +58,7 @@ export default function AirHockey({ session, game }: GameProps) {
   const scores = useRef({ p1: 0, p2: 0 });
   const winner = useRef<string | null>(null);
   const elapsed = useRef(0);
+  const aiPlan = useRef({ tx: W - 120, ty: H / 2, next: 0 });
   const finishRef = useRef(session.finish);
   finishRef.current = session.finish;
 
@@ -66,6 +82,7 @@ export default function AirHockey({ session, game }: GameProps) {
     elapsed.current = 0;
     left.current = { x: 92, y: H / 2, px: 92, py: H / 2, moving: false };
     right.current = { x: W - 92, y: H / 2, px: W - 92, py: H / 2, moving: false };
+    aiPlan.current = { tx: W - 120, ty: H / 2, next: 0 };
     resetRound(Math.random() < 0.5 ? 1 : -1, 'Serviert – wer zuerst sieben Tore hat, gewinnt.');
   }
 
@@ -104,12 +121,22 @@ export default function AirHockey({ session, game }: GameProps) {
 
     // AI paddle tracks the puck with a human amount of lag
     if (isAi) {
-      const targetY = b.x > W / 2 ? b.y : H / 2 + Math.sin(elapsed.current / 700) * 70;
-      const targetX = b.x > W / 2 ? Math.min(W - 108, Math.max(W / 2 + 30, b.x + 74)) : W - 120;
+      const config = AI_LEVELS[aiLevel];
+      const plan = aiPlan.current;
+      const now = performance.now();
+      if (now >= plan.next) {
+        plan.next = now + config.reaction * (0.75 + Math.random() * 0.5);
+        const chasing = b.x > W / 2;
+        const targetX = chasing ? Math.min(W - 108, Math.max(W / 2 + 30, b.x + 74)) : W - 120;
+        const targetY = chasing ? b.y : H / 2 + Math.sin(elapsed.current / 700) * 70;
+        plan.tx = targetX + (Math.random() - 0.5) * config.error;
+        plan.ty = targetY + (Math.random() - 0.5) * config.error;
+      }
       r.px = r.x;
       r.py = r.y;
-      r.x += (targetX - r.x) * Math.min(1, dt * 5.5);
-      r.y += (targetY - r.y) * Math.min(1, dt * 6.5);
+      const ease = Math.min(1, dt * config.speed);
+      r.x += (plan.tx - r.x) * ease;
+      r.y += (plan.ty - r.y) * ease;
       r.moving = Math.abs(r.x - r.px) + Math.abs(r.y - r.py) > 0.5;
     }
     clampPaddle(l, 'left');
@@ -318,6 +345,21 @@ export default function AirHockey({ session, game }: GameProps) {
           >
             🤖 Gegen KI
           </button>
+          {isAi
+            ? (Object.keys(AI_LEVELS) as AiLevel[]).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`gbtn ${aiLevel === id ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setStoredMode(`ai-${id}`);
+                    resetAll();
+                  }}
+                >
+                  {AI_LEVELS[id].label}
+                </button>
+              ))
+            : null}
         </div>
         <canvas
           ref={canvasRef}

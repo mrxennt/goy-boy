@@ -19,6 +19,15 @@ const R_DOUBLE_OUT = 178;
 
 const SEGMENTS = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 
+type AiLevel = 'easy' | 'normal' | 'hard';
+
+/** Shaky hands and the odd proper miss — never a machine that hits the double every time. */
+const AI_LEVELS: Record<AiLevel, { label: string; spread: number; jitter: number; miss: number; missSpread: number; missJitter: number }> = {
+  easy: { label: 'Leicht', spread: 0.3, jitter: 70, miss: 0.25, missSpread: 0.55, missJitter: 110 },
+  normal: { label: 'Mittel', spread: 0.16, jitter: 34, miss: 0.1, missSpread: 0.4, missJitter: 90 },
+  hard: { label: 'Stark', spread: 0.09, jitter: 15, miss: 0.03, missSpread: 0.3, missJitter: 70 },
+};
+
 type Throw = { score: number; double: boolean; ring: string; angle: number; radius: number; at: number };
 type Visit = { darts: Throw[]; total: number; bust: boolean; after: number };
 
@@ -39,7 +48,11 @@ function scoring(angle: number, radius: number): { score: number; double: boolea
 export default function Darts({ session, game }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useCanvasSize(canvasRef, W, H);
-  const [mode, setMode] = useDifficulty('darts', 'solo');
+  // one stored value per game: "solo", "2p" or "ai-easy"/"ai-normal"/"ai-hard"
+  const [storedMode, setStoredMode] = useDifficulty('darts', 'solo');
+  const mode = storedMode.startsWith('ai') ? 'ai' : storedMode === '2p' ? '2p' : 'solo';
+  const aiLevel: AiLevel = storedMode.endsWith('-easy') ? 'easy' : storedMode.endsWith('-hard') ? 'hard' : 'normal';
+  const setMode = (next: string) => setStoredMode(next);
   const [ui, setUi] = useState({
     remaining: [501, 501],
     turn: 0,
@@ -168,25 +181,31 @@ export default function Darts({ session, game }: GameProps) {
   }
 
   function aiThrow() {
+    const config = AI_LEVELS[aiLevel];
     const left = remaining.current[1];
     const step = Math.PI / 10;
-    const aimSegment = (segment: number, spread: number) => -Math.PI / 2 + SEGMENTS.indexOf(segment) * step + (Math.random() - 0.5) * spread;
+    const aimSegment = (segment: number) => -Math.PI / 2 + SEGMENTS.indexOf(segment) * step;
     let angle: number;
     let radius: number;
     if (left > 60) {
       // big scores: triple twenty
-      angle = aimSegment(20, 0.1);
-      radius = (R_TRIPLE_IN + R_TRIPLE_OUT) / 2 + (Math.random() - 0.5) * 24;
+      angle = aimSegment(20);
+      radius = (R_TRIPLE_IN + R_TRIPLE_OUT) / 2;
     } else if (left <= 40 && left % 2 === 0) {
       // checkout attempt on a double
-      angle = aimSegment(left / 2, 0.09);
-      radius = (R_DOUBLE_IN + R_DOUBLE_OUT) / 2 + (Math.random() - 0.5) * 16;
+      angle = aimSegment(left / 2);
+      radius = (R_DOUBLE_IN + R_DOUBLE_OUT) / 2;
     } else {
       // leave an even number below 41 for the next dart
       const segment = [20, 19, 18, 16, 12].find((value) => left - value <= 40 && (left - value) % 2 === 0) ?? 10;
-      angle = aimSegment(segment, 0.12);
-      radius = left <= 40 ? (R_TRIPLE_OUT + R_DOUBLE_IN) / 2 : (R_TRIPLE_IN + R_TRIPLE_OUT) / 2 - (left <= 40 ? 0 : 30);
+      angle = aimSegment(segment);
+      radius = left <= 40 ? (R_TRIPLE_OUT + R_DOUBLE_IN) / 2 : (R_TRIPLE_IN + R_TRIPLE_OUT) / 2 - 30;
     }
+    // the hand wobbles, and sometimes a dart goes properly wide
+    const slip = Math.random() < config.miss;
+    angle += (Math.random() - 0.5) * (slip ? config.missSpread : config.spread);
+    radius += (Math.random() - 0.5) * (slip ? config.missJitter : config.jitter);
+    radius = Math.max(4, Math.min(R_DOUBLE_OUT + 30, radius));
     throwAt(angle, radius, true);
   }
 
@@ -376,7 +395,7 @@ export default function Darts({ session, game }: GameProps) {
             type="button"
             className={`gbtn ${mode === 'ai' ? 'is-active' : ''}`}
             onClick={() => {
-              setMode('ai');
+              setMode(`ai-${aiLevel}`);
               resetGame();
             }}
           >
@@ -392,6 +411,21 @@ export default function Darts({ session, game }: GameProps) {
           >
             👥 2 Spieler
           </button>
+          {isAi
+            ? (Object.keys(AI_LEVELS) as AiLevel[]).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`gbtn ${aiLevel === id ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setMode(`ai-${id}`);
+                    resetGame();
+                  }}
+                >
+                  {AI_LEVELS[id].label}
+                </button>
+              ))
+            : null}
         </div>
         <canvas
           ref={canvasRef}

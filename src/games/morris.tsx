@@ -24,7 +24,7 @@ import {
 const LEVELS = {
   easy: { depth: 1, slip: 0.3, label: 'Leicht' },
   medium: { depth: 2, slip: 0.1, label: 'Mittel' },
-  hard: { depth: 3, slip: 0, label: 'Stark' },
+  hard: { depth: 3, slip: 0.06, label: 'Stark' },
 } as const;
 type LevelId = keyof typeof LEVELS;
 

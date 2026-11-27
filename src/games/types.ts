@@ -15,6 +15,8 @@ export type GameSession = {
   resume: () => void;
   restart: () => void;
   finish: (score: number, label?: string) => void;
+  /** Set on a daily challenge: the seed makes the round identical for everyone. */
+  daily: { date: string; seed: number } | null;
 };
 
 export type GameProps = {

@@ -28,7 +28,7 @@ export function App() {
             🛸
           </span>
           <h2>Seite nicht gefunden</h2>
-          <p className="muted">Diese Adresse führt nirgendwo hin – aber 25 Spiele warten schon.</p>
+          <p className="muted">Diese Adresse führt nirgendwo hin – aber viele Spiele warten schon.</p>
           <Link to="/" className="btn btn-primary">
             Zur Startseite
           </Link>

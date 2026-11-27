@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
+import { useDifficulty } from '../lib/hooks';
 import { sfx } from '../lib/sound';
 import type { GameProps } from './types';
 
@@ -52,7 +53,9 @@ function aiPick(board: Cell[], difficulty: 'easy' | 'perfect'): number {
 
 export default function TicTacToeAI({ session, game }: GameProps) {
   const [board, setBoard] = useState<Cell[]>(Array<Cell>(9).fill(null));
-  const [difficulty, setDifficulty] = useState<'easy' | 'perfect'>('perfect');
+  const [difficultyStored, setDifficultyStored] = useDifficulty('tictactoe-ai', 'perfect');
+  const difficulty = difficultyStored === 'easy' ? 'easy' : 'perfect';
+  const setDifficulty = (level: 'easy' | 'perfect') => setDifficultyStored(level);
   const [message, setMessage] = useState('Du spielst X und beginnst.');
   const [scores, setScores] = useState({ win: 0, draw: 0, loss: 0 });
   const [locked, setLocked] = useState(false);
@@ -94,7 +97,7 @@ export default function TicTacToeAI({ session, game }: GameProps) {
         setScores((value) => ({ ...value, draw: value.draw + 1 }));
         lockedFinish('Unentschieden');
       }
-    }, 380);
+    }, 420 + Math.random() * 600);
     return () => window.clearTimeout(timer);
   }, [board, difficulty, locked, session.status]);
 

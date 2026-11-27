@@ -1,10 +1,44 @@
-import { useEffect, useState } from 'react';
-import { AVATARS, resetProgress, updateProfile, updateSettings, useAppState } from '../lib/store';
+import { useEffect, useRef, useState } from 'react';
+import {
+  AVATARS,
+  exportProfile,
+  importProfile,
+  resetProgress,
+  updateProfile,
+  updateSettings,
+  useAppState,
+} from '../lib/store';
 import { sfx } from '../lib/sound';
 
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { settings, profile } = useAppState();
   const [name, setName] = useState(profile.name);
+  const [importNote, setImportNote] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const downloadProfile = () => {
+    const blob = new Blob([exportProfile()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `goy-boy-profil-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    sfx.point();
+  };
+
+  const readProfileFile = async (file: File | undefined) => {
+    if (!file) return;
+    const text = await file.text();
+    const result = importProfile(text);
+    setImportNote(result.ok ? null : result.message);
+    if (result.ok) {
+      setName((prev) => prev);
+      sfx.win();
+    } else {
+      sfx.error();
+    }
+  };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -79,6 +113,25 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </section>
 
         <section className="settings-group">
+          <h3>Darstellung</h3>
+          <label className="switch-row">
+            <span>
+              <b>Ruhige Effekte</b>
+              <small>Weniger Blur, Glow und Animationen – spart Akku und Frames</small>
+            </span>
+            <input
+              type="checkbox"
+              className="switch"
+              checked={settings.effects === 'reduced'}
+              onChange={(event) => {
+                updateSettings({ effects: event.target.checked ? 'reduced' : 'full' });
+                sfx.click();
+              }}
+            />
+          </label>
+        </section>
+
+        <section className="settings-group">
           <h3>Profil</h3>
           <label className="field">
             <span>Benutzername</span>
@@ -115,6 +168,22 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             Profil, Favoriten, Rekorde und Erfolge liegen ausschließlich in deinem Browser (LocalStorage). Es gibt
             keinen Server und keine Anmeldung.
           </p>
+          <div className="data-actions">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={downloadProfile}>
+              ⬇ Profil exportieren
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
+              ⬆ Profil importieren
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="visually-hidden"
+              onChange={(event) => void readProfileFile(event.target.files?.[0])}
+            />
+          </div>
+          {importNote ? <p className="form-error">{importNote}</p> : null}
           <button
             type="button"
             className="btn btn-danger btn-sm"

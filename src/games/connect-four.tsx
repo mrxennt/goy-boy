@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
+import { useDifficulty } from '../lib/hooks';
 import { sfx } from '../lib/sound';
 import type { GameProps } from './types';
 
@@ -127,7 +128,12 @@ export default function ConnectFour({ session, game }: GameProps) {
   const [board, setBoard] = useState<Board>(emptyBoard);
   const [turn, setTurn] = useState<'player' | 'ai'>('player');
   const [message, setMessage] = useState('Du bist Rot und beginnst. Klicke eine Spalte.');
-  const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard'>('normal');
+  const [difficultyStored, setDifficultyStored] = useDifficulty('connect-four', 'normal');
+  const difficulty = (difficultyStored === 'easy' || difficultyStored === 'hard' ? difficultyStored : 'normal') as
+    | 'easy'
+    | 'normal'
+    | 'hard';
+  const setDifficulty = (level: 'easy' | 'normal' | 'hard') => setDifficultyStored(level);
   const [highlight, setHighlight] = useState<[number, number][]>([]);
   const [locked, setLocked] = useState(false);
   const boardRef = useRef(board);
@@ -173,7 +179,7 @@ export default function ConnectFour({ session, game }: GameProps) {
         return;
       }
       setTurn('player');
-    }, 420);
+    }, 520 + Math.random() * 900);
     return () => window.clearTimeout(timer);
   }, [turn, board, difficulty, locked, session.status, endGame]);
 

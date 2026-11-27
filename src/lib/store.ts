@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { GAME_MAP, GAMES, type Category } from '../data/games';
+import { dateKey, shiftDay } from './daily';
 import { pushToast } from './toast';
 import { configureSound, sfx } from './sound';
 
@@ -7,10 +8,18 @@ const STORAGE_KEY = 'goyboy.profile.v1';
 const HISTORY_LIMIT = 60;
 const XP_PER_LEVEL = 250;
 
-export type Settings = { sfx: boolean; music: boolean; volume: number };
+export type EffectsMode = 'full' | 'reduced';
+export type Settings = { sfx: boolean; music: boolean; volume: number; effects: EffectsMode };
 export type Profile = { name: string; avatar: string };
 export type GameRecord = { plays: number; best: number; lastPlayed: number; ms: number };
 export type HistoryEntry = { id: string; at: number; score: number };
+export type DailyState = {
+  /** Consecutive days with at least one finished daily round. */
+  streak: number;
+  lastDate: string | null;
+  /** `${date}|${gameId}` → best daily score. */
+  results: Record<string, number>;
+};
 
 export type State = {
   profile: Profile;
@@ -21,9 +30,17 @@ export type State = {
   xp: number;
   achievements: string[];
   settings: Settings;
+  /** Last chosen difficulty per game, e.g. `{ chess: 'hard' }`. */
+  difficulties: Record<string, string>;
+  daily: DailyState;
 };
 
 export const AVATARS = ['👾', '🐍', '🦊', '🐉', '🤖', '👻', '🦄', '🦉', '🐺', '🥷', '🧙', '🚀'];
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 const DEFAULT_STATE: State = {
   profile: { name: 'Player One', avatar: '👾' },
@@ -33,7 +50,9 @@ const DEFAULT_STATE: State = {
   played: [],
   xp: 0,
   achievements: [],
-  settings: { sfx: true, music: false, volume: 0.5 },
+  settings: { sfx: true, music: false, volume: 0.5, effects: prefersReducedMotion() ? 'reduced' : 'full' },
+  difficulties: {},
+  daily: { streak: 0, lastDate: null, results: {} },
 };
 
 export type Achievement = {
@@ -152,7 +171,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'allrounder',
     name: 'Allrounder',
-    desc: 'Spiele alle 25 Spiele der Plattform.',
+    desc: 'Spiele alle Spiele der Plattform.',
     icon: '🌐',
     xp: 400,
     goal: GAMES.length,
@@ -166,6 +185,96 @@ export const ACHIEVEMENTS: Achievement[] = [
     xp: 80,
     goal: 1,
     value: (s) => (s.history.some((h) => new Date(h.at).getHours() < 5) ? 1 : 0),
+  },
+  {
+    id: 'snake-50',
+    name: 'Schlangenprofi',
+    desc: 'Snake: 50 Punkte in einer Runde.',
+    icon: '🐍',
+    xp: 120,
+    goal: 50,
+    value: (s) => s.records.snake?.best ?? 0,
+  },
+  {
+    id: 'breakout-150',
+    name: 'Ziegelbrecher',
+    desc: 'Breakout: 150 Punkte sammeln.',
+    icon: '🧱',
+    xp: 120,
+    goal: 150,
+    value: (s) => s.records.breakout?.best ?? 0,
+  },
+  {
+    id: 'tetris-500',
+    name: 'Reihenweise',
+    desc: 'Tetris: 500 Punkte in einer Runde.',
+    icon: '🧩',
+    xp: 140,
+    goal: 500,
+    value: (s) => s.records.tetris?.best ?? 0,
+  },
+  {
+    id: '2048-1000',
+    name: 'Zahlenzauber',
+    desc: '2048: 1000 Punkte in einer Runde.',
+    icon: '🔢',
+    xp: 140,
+    goal: 1000,
+    value: (s) => s.records['2048']?.best ?? 0,
+  },
+  {
+    id: 'flappy-10',
+    name: 'Röhrenflug',
+    desc: 'Flappy: 10 Röhren überstehen.',
+    icon: '🕊️',
+    xp: 110,
+    goal: 10,
+    value: (s) => s.records.flappy?.best ?? 0,
+  },
+  {
+    id: 'variety-8',
+    name: 'Allesfresser',
+    desc: 'In 8 verschiedenen Spielen einen Rekord aufstellen.',
+    icon: '🎯',
+    xp: 200,
+    goal: 8,
+    value: (_s, st) => st.bestScores,
+  },
+  {
+    id: 'daily-3',
+    name: 'Tagesroutine',
+    desc: 'Drei Tage in Folge die Tages-Challenge spielen.',
+    icon: '📅',
+    xp: 150,
+    goal: 3,
+    value: (s) => s.daily.streak,
+  },
+  {
+    id: 'daily-7',
+    name: 'Serientäter',
+    desc: 'Sieben Tage in Folge die Tages-Challenge spielen.',
+    icon: '🔥',
+    xp: 300,
+    goal: 7,
+    value: (s) => s.daily.streak,
+  },
+  {
+    id: 'collector-plus',
+    name: 'Herzenssammler',
+    desc: 'Speichere 10 Spiele als Favoriten.',
+    icon: '💖',
+    xp: 120,
+    goal: 10,
+    value: (s) => s.favorites.length,
+  },
+  {
+    id: 'level-10',
+    name: 'Veteran',
+    desc: 'Erreiche Level 10.',
+    icon: '🏅',
+    xp: 250,
+    goal: 10,
+    value: (_s, st) => st.level,
   },
 ];
 
@@ -220,6 +329,26 @@ function sanitize(raw: unknown): State {
       sfx: data.settings.sfx !== false,
       music: data.settings.music === true,
       volume: typeof data.settings.volume === 'number' ? Math.min(1, Math.max(0, data.settings.volume)) : 0.5,
+      effects: data.settings.effects === 'reduced' ? 'reduced' : 'full',
+    };
+  }
+  if (data.difficulties && typeof data.difficulties === 'object') {
+    const difficulties: Record<string, string> = {};
+    for (const [id, value] of Object.entries(data.difficulties)) {
+      if (GAME_MAP[id] && typeof value === 'string') difficulties[id] = value;
+    }
+    base.difficulties = difficulties;
+  }
+  if (data.daily && typeof data.daily === 'object') {
+    const results: Record<string, number> = {};
+    const source = (data.daily.results ?? {}) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(source)) {
+      if (typeof value === 'number' && Number.isFinite(value)) results[key] = value;
+    }
+    base.daily = {
+      streak: Math.max(0, Math.floor(Number(data.daily.streak) || 0)),
+      lastDate: typeof data.daily.lastDate === 'string' ? data.daily.lastDate : null,
+      results,
     };
   }
   return base;
@@ -394,4 +523,95 @@ export function getBest(id: string): number {
 
 export function totalPlaytimeMs(s: State): number {
   return Object.values(s.records).reduce((sum, r) => sum + r.ms, 0);
+}
+
+/* ---------------------------------------------------------------- difficulty */
+
+export function getDifficulty(gameId: string, fallback: string): string {
+  return state.difficulties[gameId] ?? fallback;
+}
+
+export function setDifficulty(gameId: string, level: string) {
+  if (!GAME_MAP[gameId] || state.difficulties[gameId] === level) return;
+  commit((s) => ({ ...s, difficulties: { ...s.difficulties, [gameId]: level } }));
+}
+
+/* -------------------------------------------------------------- daily rounds */
+
+export function dailyResult(date: string, gameId: string): number | null {
+  const value = state.daily.results[`${date}|${gameId}`];
+  return value ?? null;
+}
+
+export function isDailyPlayed(date: string, gameId: string): boolean {
+  return dailyResult(date, gameId) !== null;
+}
+
+/** Records a finished daily round and keeps the streak honest (one per day). */
+export function submitDaily(gameId: string, date: string, score: number) {
+  const key = `${date}|${gameId}`;
+  const previous = state.daily.results[key];
+  if (previous !== undefined && previous >= score) return;
+  const today = dateKey();
+  const alreadyToday = state.daily.lastDate === date;
+  let streak = state.daily.streak;
+  if (!alreadyToday) {
+    streak = state.daily.lastDate === shiftDay(date, -1) ? state.daily.streak + 1 : 1;
+  }
+  if (streak < 1) streak = 1;
+  commit((s) => ({
+    ...s,
+    xp: s.xp + 25,
+    daily: {
+      streak,
+      lastDate: date === today || s.daily.lastDate === null || date > (s.daily.lastDate ?? '')
+        ? date
+        : s.daily.lastDate,
+      results: { ...s.daily.results, [key]: Math.max(0, Math.round(score)) },
+    },
+  }));
+}
+
+/** Streak shown in the UI: a missed day resets it to zero. */
+export function currentStreak(s: State): number {
+  if (!s.daily.lastDate) return 0;
+  const today = dateKey();
+  if (s.daily.lastDate === today || s.daily.lastDate === shiftDay(today, -1)) return s.daily.streak;
+  return 0;
+}
+
+/* ------------------------------------------------------------ export/import */
+
+export function exportProfile(): string {
+  return JSON.stringify({ app: 'goy-boy', version: 1, exportedAt: new Date().toISOString(), data: state }, null, 2);
+}
+
+/** Replaces the whole local profile with the given export. Returns a message on failure. */
+export function importProfile(raw: string): { ok: boolean; message: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, message: 'Die Datei ist kein gültiges JSON.' };
+  }
+  const candidate = (parsed as { data?: unknown })?.data ?? parsed;
+  if (!candidate || typeof candidate !== 'object') {
+    return { ok: false, message: 'Die Datei enthält kein GOY-BOY-Profil.' };
+  }
+  const next = sanitize(candidate);
+  const hasContent = next.played.length > 0 || next.favorites.length > 0 || next.xp > 0;
+  if (!hasContent) {
+    return { ok: false, message: 'Das Profil enthält keine Spieldaten.' };
+  }
+  state = next;
+  persist();
+  emit();
+  configureSound(state.settings);
+  pushToast({
+    kind: 'info',
+    title: 'Profil importiert',
+    body: `Level ${levelOf(state.xp)} · ${state.achievements.length} Erfolge`,
+    icon: '📥',
+  });
+  return { ok: true, message: 'Profil übernommen.' };
 }

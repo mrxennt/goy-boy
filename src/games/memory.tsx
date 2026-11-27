@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
+import { makeRng, shuffled } from '../lib/rng';
 import { sfx } from '../lib/sound';
-import { pad, shuffle } from '../lib/utils';
+import { pad } from '../lib/utils';
 import type { GameProps } from './types';
 
 type LevelId = 'easy' | 'medium' | 'hard';
@@ -29,8 +30,9 @@ export default function Memory({ session, game }: GameProps) {
 
   const build = (nextLevel: LevelId) => {
     const cfg = LEVELS[nextLevel];
-    const symbols = shuffle(SYMBOLS).slice(0, cfg.pairs);
-    setDeck(shuffle([...symbols, ...symbols]));
+    const rng = session.daily ? makeRng(session.daily.seed) : () => Math.random();
+    const symbols = shuffled(rng, SYMBOLS).slice(0, cfg.pairs);
+    setDeck(shuffled(rng, [...symbols, ...symbols]));
     setFlipped([]);
     setMatched([]);
     setMoves(0);
@@ -42,7 +44,7 @@ export default function Memory({ session, game }: GameProps) {
   useEffect(() => {
     build(level);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.run, level]);
+  }, [session.run, level, session.daily?.seed]);
 
   useEffect(() => {
     if (session.status !== 'playing' || won) return;

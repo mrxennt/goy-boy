@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, isActive, navigate, useRoute } from '../lib/router';
 import { levelOf, useAppState } from '../lib/store';
 import { SettingsDialog } from './SettingsDialog';
@@ -15,7 +15,8 @@ const NAV_ITEMS = [
 
 export function Layout({ children }: { children: ReactNode }) {
   const route = useRoute();
-  const { profile, xp } = useAppState();
+  const { profile, xp, settings } = useAppState();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [query, setQuery] = useState(route.query.get('q') ?? '');
@@ -27,6 +28,26 @@ export function Layout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (route.path === '/games') setQuery(route.query.get('q') ?? '');
   }, [route.path, route.search]);
+
+  /* Effects preference drives a data attribute that CSS uses to drop blur,
+     glow and transitions (also auto-detected from prefers-reduced-motion). */
+  useEffect(() => {
+    document.documentElement.dataset.effects = settings.effects;
+  }, [settings.effects]);
+
+  /* "/" jumps to the search field, like on most content sites. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const submitSearch = (value: string) => {
     setQuery(value);
@@ -70,9 +91,10 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="nav-search">
               <span aria-hidden>⌕</span>
               <input
+                ref={searchRef}
                 type="search"
                 value={query}
-                placeholder="Spiele suchen…"
+                placeholder="Spiele suchen… ( / )"
                 aria-label="Spiele suchen"
                 onChange={(event) => submitSearch(event.target.value)}
               />
@@ -154,7 +176,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <p className="footer-brand">
               GOY<span> BOY</span>
             </p>
-            <p className="muted small">Click. Play. Have Fun. 25 Spiele direkt im Browser.</p>
+            <p className="muted small">Click. Play. Have Fun. Spiele direkt im Browser.</p>
           </div>
           <div className="footer-links">
             <Link to="/games">Alle Spiele</Link>

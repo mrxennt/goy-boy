@@ -2,7 +2,9 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { GAMES, getGame, sortGames, type GameMeta } from '../data/games';
 import { gameLoaders } from '../games/loaders';
 import { useGame } from '../lib/hooks';
-import { Link, navigate } from '../lib/router';
+import { Link, navigate, useRoute } from '../lib/router';
+import { dateKey, prettyDate } from '../lib/daily';
+import { clearRun, hasRun, markResume, subscribeRuns } from '../lib/runs';
 import { useAppState } from '../lib/store';
 import { FavoriteButton } from '../components/FavoriteButton';
 import { GameCard } from '../components/GameCard';
@@ -19,7 +21,7 @@ export function Player({ id }: { id: string }) {
             🕳️
           </span>
           <h2>Spiel nicht gefunden</h2>
-          <p className="muted">Dieses Spiel existiert nicht (mehr). Die Bibliothek hat 25 andere.</p>
+          <p className="muted">Dieses Spiel existiert nicht (mehr). Die Bibliothek hat andere.</p>
           <Link to="/games" className="btn btn-primary">
             Zur Bibliothek
           </Link>
@@ -31,10 +33,28 @@ export function Player({ id }: { id: string }) {
 }
 
 function GameView({ game }: { game: GameMeta }) {
-  const session = useGame(game.id);
+  const route = useRoute();
+  const isDaily = route.query.get('daily') !== null;
+  const session = useGame(game.id, isDaily ? dateKey() : null);
   const state = useAppState();
   const stageRef = useRef<HTMLDivElement>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [savedRun, setSavedRun] = useState(() => !isDaily && session.status === 'idle' && hasRun(game.id));
+
+  useEffect(() => subscribeRuns(() => setSavedRun(false)), []);
+
+  const resumeRun = () => {
+    sfx.pick();
+    markResume(game.id);
+    setSavedRun(false);
+    session.start();
+  };
+
+  const discardRun = () => {
+    sfx.click();
+    clearRun(game.id);
+    setSavedRun(false);
+  };
 
   const GameComponent = useMemo(() => lazy(gameLoaders[game.id]), [game.id]);
 
@@ -101,6 +121,30 @@ function GameView({ game }: { game: GameMeta }) {
         </h1>
         <p className="muted">{game.desc}</p>
       </header>
+
+      {isDaily ? (
+        <div className="daily-banner">
+          <span aria-hidden>📅</span>
+          <b>Tages-Challenge {prettyDate(dateKey())}</b>
+          <span className="muted small">Fester Seed – gleiche Runde für alle. Dein Ergebnis zählt für die Serie.</span>
+        </div>
+      ) : null}
+
+      {savedRun ? (
+        <div className="resume-banner">
+          <span aria-hidden>💾</span>
+          <b>Gespeicherte Runde gefunden</b>
+          <span className="muted small">Du kannst genau da weitermachen, wo du aufgehört hast.</span>
+          <div className="resume-actions">
+            <button type="button" className="btn btn-primary btn-sm" onClick={resumeRun}>
+              ▶ Fortsetzen
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={discardRun}>
+              Verwerfen
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className={`player-stage ${fullscreen ? 'is-fullscreen' : ''}`} ref={stageRef}>
         <Suspense

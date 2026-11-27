@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
 import { useKeys } from '../lib/hooks';
+import { makeRng, type Rng } from '../lib/rng';
+import { consumeResume, loadRun, saveRun } from '../lib/runs';
 import { sfx } from '../lib/sound';
 import type { GameProps } from './types';
+
+type Saved2048 = { board: Board; score: number };
 
 const SIZE = 4;
 
@@ -10,13 +14,13 @@ type Board = number[][];
 
 const emptyBoard = (): Board => Array.from({ length: SIZE }, () => Array<number>(SIZE).fill(0));
 
-function addTile(board: Board): Board {
+function addTile(board: Board, rng: Rng): Board {
   const free: { row: number; col: number }[] = [];
   board.forEach((row, r) => row.forEach((value, c) => value === 0 && free.push({ row: r, col: c })));
   if (!free.length) return board;
-  const spot = free[Math.floor(Math.random() * free.length)];
+  const spot = free[Math.floor(rng() * free.length)];
   const next = board.map((row) => [...row]);
-  next[spot.row][spot.col] = Math.random() < 0.9 ? 2 : 4;
+  next[spot.row][spot.col] = rng() < 0.9 ? 2 : 4;
   return next;
 }
 
@@ -64,9 +68,24 @@ export default function Game2048({ session, game }: GameProps) {
   const scoreRef = useRef(0);
   const overRef = useRef(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const rng = useRef<Rng>(() => Math.random());
 
   function reset() {
-    const base = addTile(addTile(emptyBoard()));
+    /* A daily round always starts from the same seed; a saved run from exactly
+       where the player left off. */
+    rng.current = session.daily ? makeRng(session.daily.seed) : () => Math.random();
+    const resumed = consumeResume('2048') ? loadRun<Saved2048>('2048') : null;
+    if (resumed && Array.isArray(resumed.board)) {
+      boardRef.current = resumed.board;
+      scoreRef.current = resumed.score ?? 0;
+      overRef.current = false;
+      setBoard(resumed.board);
+      setReached(resumed.board.flat().includes(2048));
+      setEnders(false);
+      session.setScore(resumed.score ?? 0);
+      return;
+    }
+    const base = addTile(addTile(emptyBoard(), rng.current), rng.current);
     boardRef.current = base;
     scoreRef.current = 0;
     overRef.current = false;
@@ -107,10 +126,11 @@ export default function Game2048({ session, game }: GameProps) {
 
     if (JSON.stringify(working) === JSON.stringify(current)) return;
 
-    const next = addTile(working);
+    const next = addTile(working, rng.current);
     boardRef.current = next;
     setBoard(next);
     scoreRef.current += gained;
+    saveRun<Saved2048>('2048', { board: next, score: scoreRef.current });
     session.setScore(scoreRef.current);
     if (gained > 0) sfx.point();
     else sfx.click();
@@ -126,7 +146,7 @@ export default function Game2048({ session, game }: GameProps) {
   useEffect(() => {
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.run]);
+  }, [session.run, session.daily?.seed]);
 
   useKeys({
     active: session.status === 'playing',

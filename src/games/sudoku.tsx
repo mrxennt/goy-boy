@@ -1,11 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
 import { useKeys } from '../lib/hooks';
 import { sfx } from '../lib/sound';
-import { pad, shuffle } from '../lib/utils';
+import { makeRng, shuffled, type Rng } from '../lib/rng';
+import { consumeResume, loadRun, saveRun } from '../lib/runs';
+import { pad } from '../lib/utils';
 import type { GameProps } from './types';
 
 type Difficulty = 'easy' | 'medium' | 'hard';
+type SavedSudoku = {
+  puzzle: number[];
+  solution: number[];
+  grid: number[];
+  difficulty: Difficulty;
+  seconds: number;
+  hints: number;
+  won: boolean;
+};
+
+/** Seeded for daily rounds, plain randomness otherwise. */
+let gridRng: Rng = () => Math.random();
 
 const REMOVE: Record<Difficulty, number> = { easy: 38, medium: 48, hard: 56 };
 
@@ -29,7 +43,7 @@ function fill(grid: number[], index = 0): boolean {
   if (grid[index] !== 0) return fill(grid, index + 1);
   const row = Math.floor(index / 9);
   const col = index % 9;
-  for (const value of shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9])) {
+  for (const value of shuffled(gridRng, [1, 2, 3, 4, 5, 6, 7, 8, 9])) {
     if (isValid(grid, row, col, value)) {
       grid[index] = value;
       if (fill(grid, index + 1)) return true;
@@ -59,7 +73,7 @@ function createPuzzle(difficulty: Difficulty): { puzzle: number[]; solution: num
   const solution = new Array<number>(81).fill(0);
   fill(solution);
   const puzzle = [...solution];
-  const order = shuffle(Array.from({ length: 81 }, (_, i) => i));
+  const order = shuffled(gridRng, Array.from({ length: 81 }, (_, i) => i));
   let removed = 0;
   for (const index of order) {
     if (removed >= REMOVE[difficulty]) break;
@@ -84,6 +98,20 @@ export default function Sudoku({ session, game }: GameProps) {
   const [message, setMessage] = useState('Wähle ein leeres Feld und tippe eine Ziffer.');
 
   const generate = useCallback((level: Difficulty) => {
+    gridRng = session.daily ? makeRng(session.daily.seed) : () => Math.random();
+    const resumed = consumeResume('sudoku') ? loadRun<SavedSudoku>('sudoku') : null;
+    if (resumed && Array.isArray(resumed.grid) && resumed.grid.length === 81) {
+      setDifficulty(resumed.difficulty ?? level);
+      setPuzzle(resumed.puzzle);
+      setSolution(resumed.solution);
+      setGrid(resumed.grid);
+      setSelected(null);
+      setSeconds(resumed.seconds ?? 0);
+      setHints(resumed.hints ?? 3);
+      setWon(Boolean(resumed.won));
+      setMessage('Runde fortgesetzt – dein Feld ist noch da.');
+      return;
+    }
     const result = createPuzzle(level);
     setPuzzle(result.puzzle);
     setSolution(result.solution);
@@ -93,12 +121,28 @@ export default function Sudoku({ session, game }: GameProps) {
     setHints(3);
     setWon(false);
     setMessage('Wähle ein leeres Feld und tippe eine Ziffer.');
-  }, []);
+  }, [session.daily?.seed]);
 
   useEffect(() => {
     generate(difficulty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.run, difficulty]);
+  }, [session.run, difficulty, session.daily?.seed]);
+
+  const secondsRef = useRef(seconds);
+  secondsRef.current = seconds;
+
+  useEffect(() => {
+    if (grid.length !== 81) return;
+    saveRun<SavedSudoku>('sudoku', {
+      puzzle,
+      solution,
+      grid,
+      difficulty,
+      seconds: secondsRef.current,
+      hints,
+      won,
+    });
+  }, [puzzle, solution, grid, difficulty, hints, won]);
 
   useEffect(() => {
     if (session.status !== 'playing' || won) return;

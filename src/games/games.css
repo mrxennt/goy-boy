@@ -874,3 +874,120 @@
   background: #22d3ee;
   box-shadow: 0 0 10px rgba(34, 211, 238, 0.7);
 }
+
+/* ------------------------------------------------------- chess meta panel */
+.chess-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  width: min(100%, 460px);
+  margin-top: 14px;
+}
+
+.chess-material,
+.chess-moves {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.55);
+  font-size: 12px;
+}
+
+.chess-material {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.material-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.material-pieces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.material-piece {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.material-balance {
+  color: #c4b5fd;
+  font-weight: 700;
+}
+
+.chess-moves {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.chess-moves-title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.move-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.move-list li {
+  display: flex;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.move-list li.is-black {
+  color: #cbd5e1;
+}
+
+.move-no {
+  color: #64748b;
+  min-width: 30px;
+}
+
+@media (max-width: 560px) {
+  .chess-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ------------------------------------------------------- pong touch zones */
+.pong-touch {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.pong-pad {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+  padding: 6px;
+}
+
+.pong-pad .touch-btn {
+  width: 54px;
+  height: 44px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pong-pad {
+    opacity: 0.55;
+  }
+}

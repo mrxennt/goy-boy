@@ -27,6 +27,7 @@ export const gameLoaders: Record<string, () => Promise<{ default: ComponentType<
   'tictactoe-2p': () => import('./tictactoe-2p'),
   'reaction-duel': () => import('./reaction-duel'),
   'battle-arena': () => import('./battle-arena'),
+  'snake-duel': () => import('./snake-duel'),
 };
 
 export function hasGameModule(id: string): boolean {

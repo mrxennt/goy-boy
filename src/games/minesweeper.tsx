@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
+import { makeRng, type Rng } from '../lib/rng';
+import { consumeResume, loadRun, saveRun } from '../lib/runs';
 import { sfx } from '../lib/sound';
 import { pad } from '../lib/utils';
 import type { GameProps } from './types';
 
 type Cell = { mine: boolean; revealed: boolean; flagged: boolean; count: number };
 type LevelId = 'easy' | 'medium' | 'hard';
+type SavedMines = { board: Cell[][]; level: LevelId; seconds: number; started: boolean; finished: boolean };
 
 const LEVELS: Record<LevelId, { rows: number; cols: number; mines: number; label: string }> = {
   easy: { rows: 9, cols: 9, mines: 10, label: 'Leicht · 9×9' },
@@ -29,11 +32,24 @@ export default function Minesweeper({ session, game }: GameProps) {
   const [finished, setFinished] = useState(false);
   const started = useRef(false);
   const timerRef = useRef<number | null>(null);
+  const rng = useRef<Rng>(() => Math.random());
+  const secondsRef = useRef(0);
+  secondsRef.current = seconds;
 
   const config = LEVELS[level];
 
   function reset(nextLevel: LevelId = level) {
+    rng.current = session.daily ? makeRng(session.daily.seed) : () => Math.random();
     const cfg = LEVELS[nextLevel];
+    const resumed = consumeResume('minesweeper') ? loadRun<SavedMines>('minesweeper') : null;
+    if (resumed && resumed.level === nextLevel && Array.isArray(resumed.board)) {
+      setBoard(resumed.board);
+      setSeconds(resumed.seconds ?? 0);
+      setFinished(Boolean(resumed.finished));
+      started.current = Boolean(resumed.started);
+      setStatusText('Runde fortgesetzt – mach weiter, wo du warst.');
+      return;
+    }
     setBoard(createBoard(cfg.rows, cfg.cols));
     setSeconds(0);
     setFinished(false);
@@ -42,9 +58,20 @@ export default function Minesweeper({ session, game }: GameProps) {
   }
 
   useEffect(() => {
+    if (!started.current || finished) return;
+    saveRun<SavedMines>('minesweeper', {
+      board,
+      level,
+      seconds: secondsRef.current,
+      started: started.current,
+      finished,
+    });
+  }, [board, level, finished]);
+
+  useEffect(() => {
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.run]);
+  }, [session.run, session.daily?.seed]);
 
   useEffect(() => {
     reset(level);
@@ -67,8 +94,8 @@ export default function Minesweeper({ session, game }: GameProps) {
     const { rows, cols, mines } = LEVELS[level];
     let placed = 0;
     while (placed < mines) {
-      const r = Math.floor(Math.random() * rows);
-      const c = Math.floor(Math.random() * cols);
+      const r = Math.floor(rng.current() * rows);
+      const c = Math.floor(rng.current() * cols);
       if (next[r][c].mine) continue;
       if (Math.abs(r - safeRow) <= 1 && Math.abs(c - safeCol) <= 1) continue;
       next[r][c].mine = true;

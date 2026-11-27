@@ -35,6 +35,7 @@ export function GameStage({ game, session, hud, children }: GameStageProps) {
             <b>{game.multiplayer ? '2 Spieler' : 'vs. KI'}</b>
           </div>
         )}
+        {session.daily ? <span className="gstatus daily-badge">📅 Tages-Challenge</span> : null}
         {hud ? <div className="hud-extra">{hud}</div> : null}
         <div className="hud-actions">
           {status === 'playing' ? (

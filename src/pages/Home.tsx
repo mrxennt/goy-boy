@@ -9,6 +9,7 @@ import {
   sortGames,
   type GameMeta,
 } from '../data/games';
+import { DailyCard } from '../components/DailyCard';
 import { GameRow } from '../components/GameRow';
 import { FavoriteButton } from '../components/FavoriteButton';
 import { Link, navigate } from '../lib/router';
@@ -166,6 +167,8 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      <DailyCard />
 
       <section className="category-strip" aria-label="Kategorien">
         {CATEGORIES.map((category) => (

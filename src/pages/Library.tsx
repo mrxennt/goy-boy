@@ -17,7 +17,18 @@ export function Library({ mode }: { mode: Mode }) {
   const state = useAppState();
   const [query, setQuery] = useState(route.query.get('q') ?? '');
   const activeCategory = route.query.get('cat') ?? 'Alle';
+  const activeTag = route.query.get('tag') ?? '';
   const sort = (route.query.get('sort') as SortId) || 'popular';
+
+  const tagList = useMemo(() => {
+    const counts = new Map<string, number>();
+    GAMES.forEach((game) => game.tags.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1)));
+    return [...counts.entries()]
+      .filter(([, count]) => count > 1)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'de'))
+      .slice(0, 12)
+      .map(([tag, count]) => ({ tag, count }));
+  }, []);
 
   useEffect(() => {
     setQuery(route.query.get('q') ?? '');
@@ -47,6 +58,7 @@ export function Library({ mode }: { mode: Mode }) {
     const needle = query.trim().toLowerCase();
     let list = base.filter((game) => {
       if (mode === 'all' && activeCategory !== 'Alle' && game.category !== activeCategory) return false;
+      if (mode === 'all' && activeTag && !game.tags.includes(activeTag)) return false;
       if (!needle) return true;
       return (
         game.name.toLowerCase().includes(needle) ||
@@ -55,9 +67,16 @@ export function Library({ mode }: { mode: Mode }) {
         game.tags.some((tag) => tag.includes(needle))
       );
     });
-    if (mode === 'all') list = sortGames(list, sort);
+    if (mode === 'all') {
+      list =
+        sort === 'recent'
+          ? [...list].sort(
+              (a, b) => (state.records[b.id]?.lastPlayed ?? 0) - (state.records[a.id]?.lastPlayed ?? 0),
+            )
+          : sortGames(list, sort);
+    }
     return list;
-  }, [base, query, activeCategory, sort, mode]);
+  }, [base, query, activeCategory, activeTag, sort, mode, state.records]);
 
   const heading = TITLES[mode];
 
@@ -135,6 +154,29 @@ export function Library({ mode }: { mode: Mode }) {
               </button>
             );
           })}
+        </div>
+      ) : null}
+
+      {mode === 'all' ? (
+        <div className="chip-row chip-row-tags" role="group" aria-label="Nach Tag filtern">
+          <button
+            type="button"
+            className={`chip chip-tag ${activeTag ? '' : 'is-active'}`}
+            onClick={() => updateParam('tag', null)}
+          >
+            # alle Tags
+          </button>
+          {tagList.map((entry) => (
+            <button
+              key={entry.tag}
+              type="button"
+              className={`chip chip-tag ${activeTag === entry.tag ? 'is-active' : ''}`}
+              onClick={() => updateParam('tag', activeTag === entry.tag ? null : entry.tag)}
+            >
+              #{entry.tag}
+              <small>{entry.count}</small>
+            </button>
+          ))}
         </div>
       ) : null}
 

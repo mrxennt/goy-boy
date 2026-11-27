@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GameStage } from '../components/GameStage';
 import { useKeys } from '../lib/hooks';
+import { makeRng, pickFrom } from '../lib/rng';
+import { consumeResume, loadRun, saveRun } from '../lib/runs';
 import { sfx } from '../lib/sound';
 import { choice } from '../lib/utils';
 import type { GameProps } from './types';
+
+type SavedWortle = { target: string; guesses: Guess[]; current: string; done: boolean };
 
 type Mark = 'correct' | 'present' | 'absent';
 type Guess = { word: string; marks: Mark[] };
@@ -61,12 +65,27 @@ export default function Wortle({ session, game }: GameProps) {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    setTarget(choice(WORDS));
+    const resumed = consumeResume('wortle') ? loadRun<SavedWortle>('wortle') : null;
+    if (resumed && typeof resumed.target === 'string' && VALID.has(resumed.target)) {
+      setTarget(resumed.target);
+      setGuesses(Array.isArray(resumed.guesses) ? resumed.guesses : []);
+      setCurrent('');
+      setDone(Boolean(resumed.done));
+      setNote('Runde fortgesetzt – deine Versuche sind noch da.');
+      return;
+    }
+    const rng = session.daily ? makeRng(session.daily.seed) : null;
+    setTarget(rng ? pickFrom(rng, WORDS) : choice(WORDS));
     setGuesses([]);
     setCurrent('');
     setDone(false);
     setNote('Errate das 5-Buchstaben-Wort in sechs Versuchen.');
-  }, [session.run]);
+  }, [session.run, session.daily?.seed]);
+
+  useEffect(() => {
+    if (!guesses.length) return;
+    saveRun<SavedWortle>('wortle', { target, guesses, current, done });
+  }, [target, guesses, current, done]);
 
   const letterState = useMemo(() => {
     const map = new Map<string, Mark>();

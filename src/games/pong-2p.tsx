@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
+import { TouchPad } from '../components/TouchPad';
 import { useCanvasSize, useKeys, useRafLoop } from '../lib/hooks';
 import { sfx } from '../lib/sound';
 import type { GameProps } from './types';
@@ -179,6 +180,14 @@ export default function Pong2P({ session, game }: GameProps) {
     up: (key) => keys.current.delete(key),
   });
 
+  /* Held keys would otherwise stick when the game is paused or restarted. */
+  useEffect(() => {
+    if (session.status !== 'playing') keys.current.clear();
+  }, [session.status]);
+
+  const holdKey = (key: string) => keys.current.add(key);
+  const releaseKey = (key: string) => keys.current.delete(key);
+
   useRafLoop((dt) => {
     update(dt);
     draw();
@@ -197,7 +206,32 @@ export default function Pong2P({ session, game }: GameProps) {
     >
       <div className="game-wrap">
         <canvas ref={canvasRef} className="game-canvas" style={{ maxWidth: W }} />
-        <p className="game-hint">Spieler 1: W / S · Spieler 2: ↑ / ↓ · Erster mit 7 Punkten gewinnt.</p>
+        <div className="pong-touch">
+          <TouchPad
+            label="Spieler 1"
+            className="pong-pad is-p1"
+            buttons={[
+              { key: 'w', label: '▲', aria: 'Spieler 1 hoch', className: 'up' },
+              { key: 's', label: '▼', aria: 'Spieler 1 runter', className: 'down' },
+            ]}
+            onDown={holdKey}
+            onUp={releaseKey}
+          />
+          <TouchPad
+            label="Spieler 2"
+            className="pong-pad is-p2"
+            buttons={[
+              { key: 'ArrowUp', label: '▲', aria: 'Spieler 2 hoch', className: 'up' },
+              { key: 'ArrowDown', label: '▼', aria: 'Spieler 2 runter', className: 'down' },
+            ]}
+            onDown={holdKey}
+            onUp={releaseKey}
+          />
+        </div>
+        <p className="game-hint">
+          Spieler 1: W / S oder linkes Touch-Pad · Spieler 2: ↑ / ↓ oder rechtes Touch-Pad · Erster mit 7 Punkten
+          gewinnt.
+        </p>
       </div>
     </GameStage>
   );

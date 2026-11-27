@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
+import { useDifficulty } from '../lib/hooks';
 import { sfx } from '../lib/sound';
 import type { GameProps } from './types';
 
@@ -129,14 +130,29 @@ function search(board: Board, depth: number, alpha: number, beta: number, player
   return best;
 }
 
-function chooseAiMove(board: Board): { row: number; col: number; flips: [number, number][] } | null {
+type RLevel = 'easy' | 'normal' | 'hard';
+
+const R_LEVELS: Record<RLevel, { label: string; depth: number; noise: number }> = {
+  easy: { label: 'Leicht', depth: 1, noise: 0.45 },
+  normal: { label: 'Mittel', depth: 2, noise: 0.15 },
+  hard: { label: 'Stark', depth: 4, noise: 0.03 },
+};
+
+function chooseAiMove(
+  board: Board,
+  level: RLevel = 'normal',
+): { row: number; col: number; flips: [number, number][] } | null {
   const moves = allMoves(board, AI);
   if (!moves.length) return null;
+  const config = R_LEVELS[level];
+  if (Math.random() < config.noise) {
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
   let bestScore = -Infinity;
   let best: { row: number; col: number; flips: [number, number][] } | null = null;
   for (const move of moves) {
     const next = applyMove(board, move.row, move.col, AI, move.flips);
-    const score = search(next, 3, -Infinity, Infinity, PLAYER);
+    const score = search(next, config.depth, -Infinity, Infinity, PLAYER);
     if (score > bestScore) {
       bestScore = score;
       best = move;
@@ -150,6 +166,8 @@ export default function Reversi({ session, game }: GameProps) {
   const [turn, setTurn] = useState<number>(PLAYER);
   const [message, setMessage] = useState('Du spielst Schwarz und beginnst.');
   const [locked, setLocked] = useState(false);
+  const [levelStored, setLevelStored] = useDifficulty('reversi', 'normal');
+  const level = (levelStored === 'easy' || levelStored === 'hard' ? levelStored : 'normal') as RLevel;
   const boardRef = useRef(board);
   boardRef.current = board;
   const finishRef = useRef(session.finish);
@@ -189,17 +207,17 @@ export default function Reversi({ session, game }: GameProps) {
 
     if (turn === AI) {
       const timer = window.setTimeout(() => {
-        const move = chooseAiMove(current);
+        const move = chooseAiMove(current, level);
         if (!move) return;
         setBoard(applyMove(current, move.row, move.col, AI, move.flips));
         sfx.click();
         setTurn(PLAYER);
         setMessage(`KI setzt auf ${'abcdefgh'[move.col]}${move.row + 1}. Du bist dran.`);
-      }, 480);
+      }, 520 + Math.random() * 900);
       return () => window.clearTimeout(timer);
     }
     return undefined;
-  }, [turn, board, locked, session.status, end]);
+  }, [turn, board, locked, session.status, end, level]);
 
   function play(row: number, col: number) {
     if (session.status !== 'playing' || locked || turn !== PLAYER) return;
@@ -232,6 +250,23 @@ export default function Reversi({ session, game }: GameProps) {
       }
     >
       <div className="game-wrap">
+        <div className="game-toolbar">
+          {(Object.keys(R_LEVELS) as RLevel[]).map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={`gbtn ${level === id ? 'is-active' : ''}`}
+              onClick={() => {
+                setLevelStored(id);
+                sfx.click();
+              }}
+              aria-pressed={level === id}
+            >
+              {R_LEVELS[id].label}
+            </button>
+          ))}
+        </div>
+
         <div className="reversi-board" role="grid" aria-label="Reversi Spielfeld">
           {board.map((row, r) =>
             row.map((cell, c) => (

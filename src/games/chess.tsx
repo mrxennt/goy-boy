@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameStage } from '../components/GameStage';
+import { useDifficulty } from '../lib/hooks';
 import { sfx } from '../lib/sound';
 import type { GameProps } from './types';
 
@@ -316,7 +317,6 @@ function negamax(state: State, depth: number, alpha: number, beta: number): numb
    sondern ein plausibler Alternativzug, der bis zu etwa einen Bauern kostet.
    Mehr lässt sie nicht liegen, Matt- und Verluststellungen spielt sie exakt. */
 const NEAR_BEST = 4;
-const SLIP_CHANCE = 0.2;
 const SLIP_MIN_LOSS = 25;
 const SLIP_MAX_LOSS = 110;
 
@@ -324,16 +324,29 @@ function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function chooseAiMove(state: State): Move | null {
+type Level = 'easy' | 'normal' | 'hard';
+
+const LEVELS: Record<Level, { label: string; depth: number; slip: number; base: number }> = {
+  easy: { label: 'Leicht', depth: 1, slip: 0.4, base: 620 },
+  normal: { label: 'Mittel', depth: 2, slip: 0.2, base: 700 },
+  hard: { label: 'Stark', depth: 3, slip: 0.07, base: 780 },
+};
+
+function levelOf(id: string): Level {
+  return id === 'easy' || id === 'hard' ? id : 'normal';
+}
+
+function chooseAiMove(state: State, level: Level = 'normal'): Move | null {
+  const { depth, slip } = LEVELS[level];
   const moves = legalMoves(state, 'b');
   if (!moves.length) return null;
   const scored = moves.map((move) => ({
     move,
-    score: -negamax(applyMove(state, move), 2, -Infinity, Infinity),
+    score: -negamax(applyMove(state, move), depth, -Infinity, Infinity),
   }));
   const bestScore = Math.max(...scored.map((entry) => entry.score));
 
-  const maySlip = bestScore < 10000 && Math.random() < SLIP_CHANCE;
+  const maySlip = bestScore < 10000 && Math.random() < slip;
   if (maySlip) {
     const plausible = scored.filter((entry) => {
       const loss = bestScore - entry.score;
@@ -349,14 +362,75 @@ function chooseAiMove(state: State): Move | null {
 /* Bedenkzeit wie bei einem Menschen: Grundzeit plus mehr Zeit, wenn es viele
    Zugmöglichkeiten, Schlagoptionen oder ein Schach zu bedenken gibt – plus
    etwas Streuung, damit es nie mechanisch wirkt. */
-function thinkingDelayFor(state: State): number {
+function thinkingDelayFor(state: State, level: Level = 'normal'): number {
   const moves = legalMoves(state, 'b');
   const captures = moves.filter((move) => state.board[move.to.r][move.to.c] || move.enPassant).length;
-  const base = 700;
+  const base = LEVELS[level].base;
   const complexity = Math.min(moves.length * 26, 420) + captures * 55 + (inCheck(state, 'b') ? 320 : 0);
   const jitter = Math.random() * 500;
   const hesitation = Math.random() < 0.15 ? 400 + Math.random() * 800 : 0;
   return Math.min(Math.round(base + complexity + jitter + hesitation), 2800);
+}
+
+const FILE_NAMES = 'abcdefgh';
+const PIECE_LETTER: Record<PieceType, string> = { p: '', n: 'N', b: 'B', r: 'R', q: 'Q', k: 'K' };
+const FULL_SET: Record<PieceType, number> = { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 };
+
+/** Short algebraic notation, good enough for a readable move list. */
+function moveNotation(state: State, move: Move, next: State): string {
+  const piece = state.board[move.from.r][move.from.c];
+  if (!piece) return '–';
+  const suffix = inCheck(next, next.turn) ? (legalMoves(next, next.turn).length ? '+' : '#') : '';
+  if (move.castle === 'K') return `O-O${suffix}`;
+  if (move.castle === 'Q') return `O-O-O${suffix}`;
+
+  const capture = Boolean(state.board[move.to.r][move.to.c]) || Boolean(move.enPassant);
+  const target = `${FILE_NAMES[move.to.c]}${8 - move.to.r}`;
+
+  if (piece.type === 'p') {
+    const promotion = move.promotion ? `=${PIECE_LETTER[move.promotion]}` : '';
+    return `${capture ? `${FILE_NAMES[move.from.c]}x` : ''}${target}${promotion}${suffix}`;
+  }
+
+  const rivals = legalMoves(state, piece.color).filter(
+    (other) =>
+      other.to.r === move.to.r &&
+      other.to.c === move.to.c &&
+      !(other.from.r === move.from.r && other.from.c === move.from.c) &&
+      state.board[other.from.r][other.from.c]?.type === piece.type,
+  );
+  let disambiguation = '';
+  if (rivals.length) {
+    const sameFile = rivals.some((other) => other.from.c === move.from.c);
+    const sameRank = rivals.some((other) => other.from.r === move.from.r);
+    disambiguation = !sameFile
+      ? FILE_NAMES[move.from.c]
+      : !sameRank
+        ? String(8 - move.from.r)
+        : `${FILE_NAMES[move.from.c]}${8 - move.from.r}`;
+  }
+  return `${PIECE_LETTER[piece.type]}${disambiguation}${capture ? 'x' : ''}${target}${suffix}`;
+}
+
+function missingPieces(board: (Piece | null)[][], color: Color): PieceType[] {
+  const counts: Record<PieceType, number> = { p: 0, n: 0, b: 0, r: 0, q: 0, k: 0 };
+  for (const row of board) {
+    for (const piece of row) {
+      if (piece && piece.color === color) counts[piece.type] += 1;
+    }
+  }
+  const order: PieceType[] = ['q', 'r', 'b', 'n', 'p'];
+  const missing: PieceType[] = [];
+  for (const type of order) {
+    for (let i = counts[type]; i < FULL_SET[type]; i += 1) missing.push(type);
+  }
+  return missing;
+}
+
+/** Positive value = white is ahead on material. */
+function materialBalance(board: (Piece | null)[][]): number {
+  const value = (types: PieceType[]) => types.reduce((sum, type) => sum + VALUE[type], 0);
+  return value(missingPieces(board, 'b')) - value(missingPieces(board, 'w'));
 }
 
 function outcomeOf(state: State): string | null {
@@ -375,7 +449,19 @@ export default function Chess({ session, game }: GameProps) {
   const [thinking, setThinking] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [promotion, setPromotion] = useState<{ from: Square; to: Square } | null>(null);
+  const [notation, setNotation] = useState<string[]>([]);
+  const [level, setLevel] = useDifficulty('chess', 'normal');
+  const aiLevel = levelOf(level);
   const state = history[history.length - 1];
+
+  const captured = useMemo(
+    () => ({
+      white: missingPieces(state.board, 'w'),
+      black: missingPieces(state.board, 'b'),
+      balance: materialBalance(state.board),
+    }),
+    [state.board],
+  );
 
   const boardMoves = useMemo(
     () => (state.turn === 'w' ? legalMoves(state, 'w') : []),
@@ -394,6 +480,7 @@ export default function Chess({ session, game }: GameProps) {
     setThinking(false);
     setResult(null);
     setPromotion(null);
+    setNotation([]);
   }, []);
 
   useEffect(() => {
@@ -413,6 +500,7 @@ export default function Chess({ session, game }: GameProps) {
     (move: Move) => {
       const next = applyMove(state, move);
       setHistory((list) => [...list, next]);
+      setNotation((list) => [...list, moveNotation(state, move, next)]);
       setLastMove(move);
       setSelected(null);
       setPromotion(null);
@@ -431,7 +519,7 @@ export default function Chess({ session, game }: GameProps) {
     if (state.turn !== 'b') return;
     setThinking(true);
     const timer = window.setTimeout(() => {
-      const move = chooseAiMove(state);
+      const move = chooseAiMove(state, aiLevel);
       setThinking(false);
       if (!move) {
         finishWith(outcomeOf(state) ?? 'Partie beendet');
@@ -439,15 +527,18 @@ export default function Chess({ session, game }: GameProps) {
       }
       const next = applyMove(state, move);
       setHistory((list) => [...list, next]);
+      setNotation((list) => [...list, moveNotation(state, move, next)]);
       setLastMove(move);
+      if (state.board[move.to.r][move.to.c] || move.enPassant) sfx.hit();
+      else sfx.pick();
       const outcome = outcomeOf(next);
       if (outcome) finishWith(outcome);
-    }, thinkingDelayFor(state));
+    }, thinkingDelayFor(state, aiLevel));
     return () => {
       window.clearTimeout(timer);
       setThinking(false);
     };
-  }, [state, session.status, result, finishWith]);
+  }, [state, session.status, result, finishWith, aiLevel]);
 
   function handleSquare(r: number, c: number) {
     if (session.status !== 'playing' || result || state.turn !== 'w' || thinking || promotion) return;
@@ -475,6 +566,7 @@ export default function Chess({ session, game }: GameProps) {
   function undo() {
     if (thinking || session.status !== 'playing') return;
     setHistory((list) => (list.length > 2 ? list.slice(0, list.length - 2) : list));
+    setNotation((list) => (list.length > 2 ? list.slice(0, list.length - 2) : list));
     setLastMove(null);
     setSelected(null);
     setResult(null);
@@ -510,6 +602,22 @@ export default function Chess({ session, game }: GameProps) {
             ↶ Zug zurück
           </button>
           <span className="gstatus">{turnLabel}</span>
+          <div className="diff-row" role="group" aria-label="Schwierigkeit">
+            {(Object.keys(LEVELS) as Level[]).map((id) => (
+              <button
+                key={id}
+                type="button"
+                className={`gbtn diff-btn ${aiLevel === id ? 'is-active' : ''}`}
+                onClick={() => {
+                  setLevel(id);
+                  sfx.click();
+                }}
+                aria-pressed={aiLevel === id}
+              >
+                {LEVELS[id].label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="chess-board" role="grid" aria-label="Schachbrett">
@@ -573,6 +681,58 @@ export default function Chess({ session, game }: GameProps) {
             ))}
           </div>
         ) : null}
+
+        <div className="chess-meta">
+          <div className="chess-material" aria-label="Geschlagene Figuren">
+            <span className="material-side">
+              ⚫
+              {captured.black.length ? (
+                <span className="material-pieces">
+                  {captured.black.map((type, index) => (
+                    <span key={`${type}-${index}`} className="chess-piece is-white material-piece">
+                      {GLYPH[type]}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="muted tiny">noch nichts geschlagen</span>
+              )}
+            </span>
+            <span className="material-side">
+              ⚪
+              {captured.white.length ? (
+                <span className="material-pieces">
+                  {captured.white.map((type, index) => (
+                    <span key={`${type}-${index}`} className="chess-piece is-black material-piece">
+                      {GLYPH[type]}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="muted tiny">noch nichts geschlagen</span>
+              )}
+            </span>
+            <span className="material-balance">
+              {captured.balance === 0 ? 'Material ausgeglichen' : captured.balance > 0 ? `+${captured.balance} für Weiß` : `+${-captured.balance} für Schwarz`}
+            </span>
+          </div>
+
+          <div className="chess-moves" aria-label="Zugliste">
+            <span className="chess-moves-title">Züge</span>
+            {notation.length ? (
+              <ol className="move-list">
+                {notation.map((san, index) => (
+                  <li key={`${san}-${index}`} className={index % 2 === 0 ? 'is-white' : 'is-black'}>
+                    <span className="move-no">{Math.floor(index / 2) + 1}{index % 2 === 0 ? '.' : '…'}</span>
+                    {san}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="muted tiny">Noch keine Züge – du beginnst mit Weiß.</p>
+            )}
+          </div>
+        </div>
 
         <p className="game-hint">Klicke eine weiße Figur und dann das Zielfeld. Alle Regeln inklusive Rochade, En Passant und Umwandlung.</p>
       </div>

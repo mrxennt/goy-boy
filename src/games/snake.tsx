@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { GameStage } from '../components/GameStage';
 import { useCanvasSize, useKeys, useRafLoop } from '../lib/hooks';
+import { makeRng, type Rng } from '../lib/rng';
 import { sfx } from '../lib/sound';
 import type { GameProps } from './types';
 import { drawBackdrop, drawGrid, fillRound, glowCircle, roundRectPath } from './lib/canvas';
@@ -23,10 +24,36 @@ function freeCells(body: Vec[]): Vec[] {
   return cells;
 }
 
-function spawnFood(body: Vec[]): Vec {
+function spawnFood(body: Vec[], rng: Rng = () => Math.random()): Vec {
   const cells = freeCells(body);
-  return cells[Math.floor(Math.random() * cells.length)] ?? { x: 0, y: 0 };
+  return cells[Math.floor(rng() * cells.length)] ?? { x: 0, y: 0 };
 }
+
+/** The best run is stored so it can be replayed as a translucent ghost snake. */
+type GhostRun = { seed: number; score: number; inputs: { tick: number; dx: number; dy: number }[] };
+const GHOST_KEY = 'goyboy.ghost.snake.v1';
+
+function loadGhost(): GhostRun | null {
+  try {
+    const raw = localStorage.getItem(GHOST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GhostRun;
+    if (!parsed || typeof parsed.seed !== 'number' || !Array.isArray(parsed.inputs)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function storeGhost(run: GhostRun) {
+  try {
+    localStorage.setItem(GHOST_KEY, JSON.stringify(run));
+  } catch {
+    /* ghost is a bonus, not a requirement */
+  }
+}
+
+type Ghost = { body: Vec[]; dir: Vec; food: Vec; rng: Rng; inputs: GhostRun['inputs']; head: number; alive: boolean };
 
 export default function Snake({ session, game }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,12 +68,29 @@ export default function Snake({ session, game }: GameProps) {
   const scored = useRef(0);
   const eating = useRef(0);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const rng = useRef<Rng>(() => Math.random());
+  const seed = useRef(0);
+  const tickNo = useRef(0);
+  const recording = useRef<{ tick: number; dx: number; dy: number }[]>([]);
+  const ghost = useRef<Ghost | null>(null);
+  const ghostScore = useRef(0);
 
   function draw() {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
     drawBackdrop(ctx, W, H, 'rgba(13, 148, 136, 0.22)');
     drawGrid(ctx, W, H, CELL, 'rgba(255,255,255,0.035)');
+
+    // ghost of the best run
+    const replay = ghost.current;
+    if (replay && replay.alive && replay.body.length) {
+      ctx.save();
+      ctx.globalAlpha = 0.26;
+      replay.body.forEach((segment) => {
+        fillRound(ctx, segment.x * CELL + 3, segment.y * CELL + 3, CELL - 6, CELL - 6, 8, '#c4b5fd');
+      });
+      ctx.restore();
+    }
 
     // food
     const pulse = 1 + Math.sin(performance.now() / 220) * 0.1;
@@ -116,7 +160,25 @@ export default function Snake({ session, game }: GameProps) {
     ];
     direction.current = { x: 1, y: 0 };
     queue.current = [];
-    food.current = spawnFood(body.current);
+    seed.current = session.daily ? session.daily.seed : Math.floor(Math.random() * 1_000_000_000);
+    rng.current = makeRng(seed.current);
+    tickNo.current = 0;
+    recording.current = [];
+    food.current = spawnFood(body.current, rng.current);
+    const best = session.daily ? null : loadGhost();
+    ghostScore.current = best?.score ?? 0;
+    ghost.current = best
+      ? {
+          body: [{ x: 8, y: 7 }, { x: 7, y: 7 }, { x: 6, y: 7 }],
+          dir: { x: 1, y: 0 },
+          food: { x: 16, y: 7 },
+          rng: makeRng(best.seed),
+          inputs: best.inputs,
+          head: 0,
+          alive: true,
+        }
+      : null;
+    if (ghost.current) ghost.current.food = spawnFood(ghost.current.body, ghost.current.rng);
     acc.current = 0;
     stepMs.current = 165;
     scored.current = 0;
@@ -128,15 +190,55 @@ export default function Snake({ session, game }: GameProps) {
     const base = queue.current.length ? queue.current[queue.current.length - 1] : direction.current;
     if (next.x === -base.x && next.y === -base.y) return;
     if (next.x === base.x && next.y === base.y) return;
-    if (queue.current.length < 2) queue.current.push(next);
+    if (queue.current.length < 2) {
+      queue.current.push(next);
+      recording.current.push({ tick: tickNo.current + 1, dx: next.x, dy: next.y });
+    }
   }
 
   function die() {
     sfx.hit();
+    if (scored.current > ghostScore.current) {
+      storeGhost({ seed: seed.current, score: scored.current, inputs: recording.current });
+      ghostScore.current = scored.current;
+    }
     session.finish(scored.current, 'Game Over');
   }
 
+  function ghostTick() {
+    const replay = ghost.current;
+    if (!replay || !replay.alive) return;
+    while (replay.head < replay.inputs.length && replay.inputs[replay.head].tick <= tickNo.current) {
+      const input = replay.inputs[replay.head];
+      replay.head += 1;
+      const next = { x: input.dx, y: input.dy };
+      if (next.x === -replay.dir.x && next.y === -replay.dir.y) continue;
+      if (next.x === replay.dir.x && next.y === replay.dir.y) continue;
+      replay.dir = next;
+    }
+    const head = replay.body[0];
+    const nx = head.x + replay.dir.x;
+    const ny = head.y + replay.dir.y;
+    if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) {
+      replay.alive = false;
+      return;
+    }
+    const eats = nx === replay.food.x && ny === replay.food.y;
+    const limit = eats ? replay.body.length : replay.body.length - 1;
+    for (let i = 0; i < limit; i += 1) {
+      if (replay.body[i].x === nx && replay.body[i].y === ny) {
+        replay.alive = false;
+        return;
+      }
+    }
+    replay.body = [{ x: nx, y: ny }, ...replay.body];
+    if (eats) replay.food = spawnFood(replay.body, replay.rng);
+    else replay.body.pop();
+  }
+
   function tick() {
+    tickNo.current += 1;
+    ghostTick();
     const nextDirection = queue.current.shift();
     if (nextDirection) direction.current = nextDirection;
     const head = body.current[0];
@@ -163,7 +265,7 @@ export default function Snake({ session, game }: GameProps) {
       sfx.point();
       eating.current = 1;
       stepMs.current = Math.max(72, stepMs.current - 4);
-      food.current = spawnFood(body.current);
+      food.current = spawnFood(body.current, rng.current);
     } else {
       body.current.pop();
     }
@@ -172,7 +274,7 @@ export default function Snake({ session, game }: GameProps) {
   useEffect(() => {
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.run]);
+  }, [session.run, session.daily?.seed]);
 
   useKeys({
     active: session.status === 'playing',

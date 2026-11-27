@@ -427,6 +427,22 @@ export const GAMES: GameMeta[] = [
     multiplayer: true,
     score: false,
   },
+  {
+    id: 'snake-duel',
+    name: 'Snake Duell',
+    category: 'Multiplayer',
+    tags: ['lokal', 'action', 'klassiker', 'schnell'],
+    desc: 'Zwei Schlangen, ein Feld, ein Apfel.',
+    long: 'Gleichzeitig auf demselben Feld: links mit WASD, rechts mit den Pfeiltasten. Wer den Apfel zuerst erwischt, wird länger – und wer in Wand, sich selbst oder den Gegner läuft, verliert. Kurz, fies, sofort wieder spielbar.',
+    controls: 'Spieler 1: WASD · Spieler 2: Pfeiltasten',
+    icon: '🐍',
+    from: '#4ade80',
+    to: '#f472b6',
+    popularity: 74,
+    added: 26,
+    multiplayer: true,
+    score: false,
+  },
 ];
 
 export const GAME_MAP: Record<string, GameMeta> = Object.fromEntries(GAMES.map((g) => [g.id, g]));
@@ -449,12 +465,14 @@ export const SORT_OPTIONS = [
   { id: 'popular', label: 'Beliebtheit' },
   { id: 'new', label: 'Neu hinzugefügt' },
   { id: 'az', label: 'Name A–Z' },
+  { id: 'recent', label: 'Zuletzt gespielt' },
 ] as const;
 
 export type SortId = (typeof SORT_OPTIONS)[number]['id'];
 
 export function sortGames(games: GameMeta[], sort: SortId): GameMeta[] {
   const list = [...games];
+  if (sort === 'recent') return list;
   if (sort === 'new') return list.sort((a, b) => b.added - a.added);
   if (sort === 'az') return list.sort((a, b) => a.name.localeCompare(b.name, 'de'));
   return list.sort((a, b) => b.popularity - a.popularity);

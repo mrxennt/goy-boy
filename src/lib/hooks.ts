@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { getBest, recordScore, startPlay, addPlayTime, useAppState } from './store';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  addPlayTime,
+  getBest,
+  getDifficulty,
+  recordScore,
+  setDifficulty,
+  startPlay,
+  submitDaily,
+  useAppState,
+} from './store';
+import { dailySeed } from './daily';
+import { clearRun } from './runs';
 import { sfx } from './sound';
 
 export type GameStatus = 'idle' | 'playing' | 'paused' | 'over';
@@ -69,8 +80,16 @@ export function useCanvasSize(ref: React.RefObject<HTMLCanvasElement>, logicalWi
   }, [ref, logicalWidth, logicalHeight]);
 }
 
+/** Difficulty of a game as stored in the profile (persisted per game). */
+export function useDifficulty(gameId: string, fallback: string): [string, (level: string) => void] {
+  const app = useAppState();
+  const level = app.difficulties[gameId] ?? getDifficulty(gameId, fallback);
+  const change = useCallback((next: string) => setDifficulty(gameId, next), [gameId]);
+  return [level, change];
+}
+
 /** Shared session/score/achievement plumbing for every game. */
-export function useGame(gameId: string) {
+export function useGame(gameId: string, dailyDate: string | null = null) {
   const app = useAppState();
   const best = app.records[gameId]?.best ?? 0;
   const [status, setStatus] = useState<GameStatus>('idle');
@@ -87,6 +106,13 @@ export function useGame(gameId: string) {
       addPlayTime(gameId, performance.now() - startedAt);
     };
   }, [status, gameId]);
+
+  const daily = useMemo(
+    () => (dailyDate ? { date: dailyDate, seed: dailySeed(dailyDate, gameId) } : null),
+    [dailyDate, gameId],
+  );
+  const dailyRef = useRef(daily);
+  dailyRef.current = daily;
 
   const start = useCallback(() => {
     if (!started.current) {
@@ -114,6 +140,7 @@ export function useGame(gameId: string) {
     setOutcome(null);
     setRun((r) => r + 1);
     setStatus('playing');
+    clearRun(gameId);
     sfx.click();
   }, [gameId]);
 
@@ -125,6 +152,9 @@ export function useGame(gameId: string) {
       setOutcome(label ?? null);
       setResult({ score: Math.max(0, Math.round(finalScore)), isRecord: isRecord && finalScore > previousBest });
       setStatus('over');
+      clearRun(gameId);
+      const activeDaily = dailyRef.current;
+      if (activeDaily) submitDaily(gameId, activeDaily.date, finalScore);
       sfx.lose();
     },
     [gameId],
@@ -143,5 +173,6 @@ export function useGame(gameId: string) {
     resume,
     restart,
     finish,
+    daily,
   };
 }

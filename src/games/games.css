@@ -524,7 +524,8 @@
 }
 
 .chess-square:hover .chess-piece {
-  transform: scale(1.08);
+  /* glow instead of a scale: every figure keeps exactly the same size */
+  filter: drop-shadow(0 0 6px rgba(196, 181, 253, 0.9));
 }
 
 .chess-target {

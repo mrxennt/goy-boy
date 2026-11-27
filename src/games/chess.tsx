@@ -312,22 +312,38 @@ function negamax(state: State, depth: number, alpha: number, beta: number): numb
   return best;
 }
 
+/* Menschliche Ungenauigkeit: ungefähr jeder fünfte Zug ist nicht der beste,
+   sondern ein plausibler Alternativzug, der bis zu etwa einen Bauern kostet.
+   Mehr lässt sie nicht liegen, Matt- und Verluststellungen spielt sie exakt. */
+const NEAR_BEST = 4;
+const SLIP_CHANCE = 0.2;
+const SLIP_MIN_LOSS = 25;
+const SLIP_MAX_LOSS = 110;
+
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
 function chooseAiMove(state: State): Move | null {
   const moves = legalMoves(state, 'b');
   if (!moves.length) return null;
-  let bestScore = -Infinity;
-  let bestMoves: Move[] = [];
-  for (const move of moves) {
-    const next = applyMove(state, move);
-    const score = -negamax(next, 2, -Infinity, Infinity);
-    if (score > bestScore + 4) {
-      bestScore = score;
-      bestMoves = [move];
-    } else if (Math.abs(score - bestScore) <= 4) {
-      bestMoves.push(move);
-    }
+  const scored = moves.map((move) => ({
+    move,
+    score: -negamax(applyMove(state, move), 2, -Infinity, Infinity),
+  }));
+  const bestScore = Math.max(...scored.map((entry) => entry.score));
+
+  const maySlip = bestScore < 10000 && Math.random() < SLIP_CHANCE;
+  if (maySlip) {
+    const plausible = scored.filter((entry) => {
+      const loss = bestScore - entry.score;
+      return loss >= SLIP_MIN_LOSS && loss <= SLIP_MAX_LOSS;
+    });
+    if (plausible.length) return pickRandom(plausible).move;
   }
-  return bestMoves[Math.floor(Math.random() * bestMoves.length)] ?? moves[0];
+
+  const nearBest = scored.filter((entry) => Math.abs(entry.score - bestScore) <= NEAR_BEST);
+  return nearBest.length ? pickRandom(nearBest).move : moves[0];
 }
 
 /* Bedenkzeit wie bei einem Menschen: Grundzeit plus mehr Zeit, wenn es viele
